@@ -44,19 +44,19 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include "constants.h"
+#include "settings.h"
 
 // TRACE output simplified, can be deactivated here
 #define TRACE(...) Serial.printf(__VA_ARGS__)
 
-
 // i2c Clock
-RTC_DS3231 rtc;
+RTC_DS3231 rtc; // Address 0x68
 
 // i2c Display
-Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
+Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire); // Address 0x3C
 
 // i2c Port extender
-Adafruit_MCP23X17 mcp;
+Adafruit_MCP23X17 mcp; // Address 0x20
 
 // Device IP Address
 IPAddress ip;
@@ -73,3 +73,6 @@ void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);
 void printLocalTime();
+void printI2cDevices();
+void writeToEEPROM(int address, void* data, size_t length);
+void readFromEEPROM(int address, void* data, size_t length);

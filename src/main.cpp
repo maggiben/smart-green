@@ -47,22 +47,64 @@ void setup() {
   setupMcp();
 
 
-  connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+  // connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
-  if (isConnected()) {
-    ip = WiFi.localIP();
-    Serial.println();
-    Serial.print("Connected: "); Serial.print(ip); Serial.println();
-  } else {
-    Serial.println();    
-    errorMsg("Error connecting to WiFi");
-  }
+  // if (isConnected()) {
+  //   ip = WiFi.localIP();
+  //   Serial.println();
+  //   Serial.print("Connected: "); Serial.print(ip); Serial.println();
+  // } else {
+  //   Serial.println();    
+  //   errorMsg("Error connecting to WiFi");
+  // }
 
   // Ask for the current time using NTP request builtin into ESP firmware.
   TRACE("Setup ntp...\n");
   // initTime("WET0WEST,M3.5.0/1,M10.5.0");   // Set for Melbourne/AU
-  initTime(TIMEZONE);   // Set for Melbourne/AU
-  printLocalTime();
+  // initTime(TIMEZONE);   // Set for Melbourne/AU
+  // printLocalTime();
+
+
+
+
+  // EEPROM
+  // Settings* settings = (Settings *) malloc(sizeof(Settings));
+  // strcpy(settings->name, "caca mundial");
+  // settings->id = 0x80;
+  // writeSetting(settings);
+  // Serial.printf("size %d\n", sizeof(Settings));
+  // writeToEEPROM(0, (void *)settings, sizeof(Settings));
+
+  // ----------- WORKS ------------
+  writeToEEPROM(0, (void *)"Hello World\0", sizeof(char) * 12);
+  // vTaskDelay(100 / portTICK_PERIOD_MS);
+  
+  char* msg[64];
+  memset(&msg, 0, sizeof(char) * 64);
+  readFromEEPROM(0, (void *) msg, sizeof(char) * 12);
+  TRACE("EEPROM: %s\n", msg);
+
+  // ----------- WORKS ------------
+
+  // Settings *settings = (Settings *) malloc(sizeof(Settings));
+  // strcpy(settings->name, "Hello World");
+  // writeSetting(settings);
+
+  // Settings *settings2 = (Settings *) malloc(sizeof(Settings));
+  // memset(settings2, 0, sizeof(Settings));
+
+  // readFromEEPROM(0, settings2, sizeof(Settings));
+
+  // Serial.printf("OLD: %s\n", settings->name);
+  // Serial.println("NAMEXXXX:");
+  // // Serial.println((char *) settings2);
+  // Serial.println(settings2->name);
+  // Serial.println("IDXXX:");
+  // Serial.println(settings2->id, HEX);
+
+  // --------------------------
+
+
   // configTime(0, 0, "pool.ntp.com");
 
   // // Wait for time to synchronize
@@ -89,36 +131,56 @@ void setup() {
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
 
 
-  // REST Endpoint
-  server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
-  server.on("/api/valve", HTTP_POST, handleValve);
-  // Enable CORS header in webserver results
-  server.enableCORS(true);
-  // Start Server
-  server.begin();
+  // REST Endpoint (Only if Connected)
+  // server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
+  // server.on("/api/valve", HTTP_POST, handleValve);
+  // // Enable CORS header in webserver results
+  // server.enableCORS(true);
+  // // Start Server
+  // server.begin();
 
-  TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+  // TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+
+  printI2cDevices();
 }
 
+// TRACE();
+
 void setTimezone(String timezone) {
-  TRACE(" Setting Timezone to %s\n", timezone.c_str());
+  TRACE("Setting Timezone to: %s\n", timezone.c_str());
   setenv("TZ", timezone.c_str(),1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
   tzset();
 }
 
 void initTime(String timezone) {
-  struct tm timeinfo;
+  Settings *settings = (Settings *) malloc(sizeof(Settings));
+  // DateTime dateTime;
 
-  TRACE("Setting up time");
+  TRACE("Setting up time\n");
   configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset
-  if(!getLocalTime(&timeinfo)){
-    TRACE("Failed to obtain time");
+  if(!getLocalTime(&settings->lastDateTimeSync)){
+    TRACE("Failed to obtain time\n");
     return;
   }
-  TRACE("Got the time from NTP");
+  TRACE("Got the time from NTP\n");
   // Now we can set the real timezone
   setTimezone(timezone);
   syncRTC();
+  // settings.lastDateTimeSync = dateTime;
+  // settings.lastDateTimeSync = dateTime;
+  // memccpy(&settings.lastDateTimeSync, &timeinfo, 0, sizeof(tm));
+  memcpy(settings->name, "Hello 2024\0", sizeof(char) * strlen("Hello 2024\0"));
+  writeSetting(settings);
+  Settings *settings2 = (Settings *) malloc(sizeof(Settings));
+  // Settings settings2;
+  readSettings(settings2);
+
+  // Print last sync time as HH:MM:SS
+  // TRACE("EEPROM TIME: %02d:%02d:%02d\n", settings2->lastDateTimeSync.tm_hour, settings2->lastDateTimeSync.tm_min, settings2->lastDateTimeSync.tm_sec);
+
+  TRACE("NAME %s:\n", settings2->name);
+  free(settings2);
+  free(settings);
 }
 
 void printLocalTime() {
@@ -169,6 +231,7 @@ void printI2cDevices() {
     Serial.println("done\n");
  
 }
+
 void printRtcTime() {
   DateTime now = rtc.now();
 
@@ -185,6 +248,7 @@ void printRtcTime() {
   Serial.print(now.second(), DEC);
   Serial.println();
 }
+
 void displayTime() {
   // text display tests
   DateTime now = rtc.now();
@@ -251,9 +315,10 @@ void syncRTC() {
   localtime_r(&now, &timeinfo);
 
   // Set RTC time
-  rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
-  Serial.println("RTC synced with NTP time");
+  DateTime dateTime = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  rtc.adjust(dateTime);
+  // writeToEEPROM(0, &dateTime, sizeof(DateTime));
+  TRACE("RTC synced with NTP time\n");
 }
 
 // This function is called when the sysInfo service was requested.
@@ -261,11 +326,14 @@ void handleSysInfo() {
   String result;
 
   result += "{\n";
-  result += "  \"Chip Model\": " + String(ESP.getChipModel()) + ",\n";
-  result += "  \"Chip Cores\": " + String(ESP.getChipCores()) + ",\n";
-  result += "  \"Chip Revision\": " + String(ESP.getChipRevision()) + ",\n";
+  result += "  \"chipModel\": \"" + String(ESP.getChipModel()) + "\",\n";
+  result += "  \"chipCores\": " + String(ESP.getChipCores()) + ",\n";
+  result += "  \"chipRevision\": " + String(ESP.getChipRevision()) + ",\n";
   result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
+  result += "  \"boardTemperature\": " + String(rtc.getTemperature()) + ",\n";
+  result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
+  result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
   // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
   result += "}";
@@ -331,4 +399,39 @@ void loop() {
 
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
   displayTime();
+}
+
+void writeToEEPROM(int address, void* data, size_t length) {
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((uint8_t)(address >> 8)); // MSB of address
+  Wire.write((uint8_t)(address & 0xFF)); // LSB of address
+  uint8_t* byteData = (uint8_t*)data;
+  for (size_t i = 0; i < length; i++) {
+    Wire.write(byteData[i]);
+  }
+  Wire.endTransmission();
+  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
+}
+
+void readFromEEPROM(int address, void* data, size_t length) {
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write((uint8_t)(address >> 8)); // MSB of address
+  Wire.write((uint8_t)(address & 0xFF)); // LSB of address
+  Wire.endTransmission();
+  Wire.requestFrom(EEPROM_ADDR, length);
+  TRACE("Requested: %d\n", length);
+  uint8_t* byteData = (uint8_t*)data;
+  while (Wire.available()) {
+    byte datum = Wire.read();
+    TRACE("%c", datum);
+  }
+  Serial.println();
+  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
+  // if (Wire.available() >= length) {
+  //   TRACE("DATA AVAILABLE\n");
+  //   for (size_t i = 0; i < length; i++) {
+  //     byteData[i] = Wire.read();
+  //     TRACE("DATA: %s\n", byteData[i]);
+  //   }
+  // }
 }
