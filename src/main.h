@@ -34,7 +34,38 @@
  **/
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <SPI.h>
-// Date and time functions using a DS3231 RTC connected via I2C and Wire lib
-#include <RTClib.h>
+#include <Wire.h>
+#include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_MCP23X17.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include "constants.h"
+
+// TRACE output simplified, can be deactivated here
+#define TRACE(...) Serial.printf(__VA_ARGS__)
+
+
+// i2c Clock
 RTC_DS3231 rtc;
+
+// i2c Display
+Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
+
+// i2c Port extender
+Adafruit_MCP23X17 mcp;
+
+// Device IP Address
+IPAddress ip;
+
+// Need a WebServer for http access on port 80.
+WebServer server(80);
+
+void errorMsg(String error, bool restart = true);
+bool isConnected();
+bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
+void handleSysInfo();
+void handleValve();
