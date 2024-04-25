@@ -37,6 +37,7 @@
 #include <WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <EEPROM.h>
 #include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -46,9 +47,8 @@
 #include "constants.h"
 #include "settings.h"
 
-// TRACE output simplified, can be deactivated here
-#define TRACE(...) Serial.printf(__VA_ARGS__)
-
+// Settings
+Settings settings;
 // i2c Clock
 RTC_DS3231 rtc; // Address 0x68
 
@@ -69,6 +69,7 @@ bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
 void handleSysInfo();
 void handleValve();
+void handleSaveSettings();
 void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);

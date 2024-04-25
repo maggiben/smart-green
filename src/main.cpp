@@ -22,6 +22,15 @@ void setup() {
 
   Wire.begin();
 
+  // Check if EEPROM is ready
+  Wire.beginTransmission(EEPROM_ADDRESS);
+  if (Wire.endTransmission() != 0) {
+    TRACE("EEPROM not found or not ready");
+    // ESP.restart();
+  }
+
+  EEPROM.begin(EEPROM_SIZE);
+
   if (!rtc.begin()) {
     Serial.println("Couldn't find RTC");
     Serial.flush();
@@ -47,63 +56,25 @@ void setup() {
   setupMcp();
 
 
-  // connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+  connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
-  // if (isConnected()) {
-  //   ip = WiFi.localIP();
-  //   Serial.println();
-  //   Serial.print("Connected: "); Serial.print(ip); Serial.println();
-  // } else {
-  //   Serial.println();    
-  //   errorMsg("Error connecting to WiFi");
-  // }
+  if (isConnected()) {
+    ip = WiFi.localIP();
+    TRACE("\n");
+    TRACE("Connected: "); PRINT(ip); TRACE("\n");
+  } else {
+    TRACE("\n");    
+    errorMsg("Error connecting to WiFi");
+  }
 
+  // EEPROM
+  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
+  TRACE("EEPROM2: %s now: %d\n", settings.name, rtc.now().unixtime());
   // Ask for the current time using NTP request builtin into ESP firmware.
   TRACE("Setup ntp...\n");
   // initTime("WET0WEST,M3.5.0/1,M10.5.0");   // Set for Melbourne/AU
-  // initTime(TIMEZONE);   // Set for Melbourne/AU
-  // printLocalTime();
-
-
-
-
-  // EEPROM
-  // Settings* settings = (Settings *) malloc(sizeof(Settings));
-  // strcpy(settings->name, "caca mundial");
-  // settings->id = 0x80;
-  // writeSetting(settings);
-  // Serial.printf("size %d\n", sizeof(Settings));
-  // writeToEEPROM(0, (void *)settings, sizeof(Settings));
-
-  // ----------- WORKS ------------
-  writeToEEPROM(0, (void *)"Hello World\0", sizeof(char) * 12);
-  // vTaskDelay(100 / portTICK_PERIOD_MS);
-  
-  char* msg[64];
-  memset(&msg, 0, sizeof(char) * 64);
-  readFromEEPROM(0, (void *) msg, sizeof(char) * 12);
-  TRACE("EEPROM: %s\n", msg);
-
-  // ----------- WORKS ------------
-
-  // Settings *settings = (Settings *) malloc(sizeof(Settings));
-  // strcpy(settings->name, "Hello World");
-  // writeSetting(settings);
-
-  // Settings *settings2 = (Settings *) malloc(sizeof(Settings));
-  // memset(settings2, 0, sizeof(Settings));
-
-  // readFromEEPROM(0, settings2, sizeof(Settings));
-
-  // Serial.printf("OLD: %s\n", settings->name);
-  // Serial.println("NAMEXXXX:");
-  // // Serial.println((char *) settings2);
-  // Serial.println(settings2->name);
-  // Serial.println("IDXXX:");
-  // Serial.println(settings2->id, HEX);
-
-  // --------------------------
-
+  initTime(TIMEZONE);   // Set for Melbourne/AU
+  printLocalTime();
 
   // configTime(0, 0, "pool.ntp.com");
 
@@ -132,12 +103,13 @@ void setup() {
 
 
   // REST Endpoint (Only if Connected)
-  // server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
-  // server.on("/api/valve", HTTP_POST, handleValve);
-  // // Enable CORS header in webserver results
-  // server.enableCORS(true);
-  // // Start Server
-  // server.begin();
+  server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
+  server.on("/api/settings", HTTP_POST, handleSaveSettings);
+  server.on("/api/valve", HTTP_POST, handleValve);
+  // Enable CORS header in webserver results
+  server.enableCORS(true);
+  // Start Server
+  server.begin();
 
   // TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
@@ -155,32 +127,18 @@ void setTimezone(String timezone) {
 void initTime(String timezone) {
   Settings *settings = (Settings *) malloc(sizeof(Settings));
   // DateTime dateTime;
-
+  tm localTime;
   TRACE("Setting up time\n");
   configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset
-  if(!getLocalTime(&settings->lastDateTimeSync)){
+  if(!getLocalTime(&localTime)){
     TRACE("Failed to obtain time\n");
     return;
   }
   TRACE("Got the time from NTP\n");
   // Now we can set the real timezone
   setTimezone(timezone);
+  TRACE("TIME: %02d:%02d:%02d\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec);
   syncRTC();
-  // settings.lastDateTimeSync = dateTime;
-  // settings.lastDateTimeSync = dateTime;
-  // memccpy(&settings.lastDateTimeSync, &timeinfo, 0, sizeof(tm));
-  memcpy(settings->name, "Hello 2024\0", sizeof(char) * strlen("Hello 2024\0"));
-  writeSetting(settings);
-  Settings *settings2 = (Settings *) malloc(sizeof(Settings));
-  // Settings settings2;
-  readSettings(settings2);
-
-  // Print last sync time as HH:MM:SS
-  // TRACE("EEPROM TIME: %02d:%02d:%02d\n", settings2->lastDateTimeSync.tm_hour, settings2->lastDateTimeSync.tm_min, settings2->lastDateTimeSync.tm_sec);
-
-  TRACE("NAME %s:\n", settings2->name);
-  free(settings2);
-  free(settings);
 }
 
 void printLocalTime() {
@@ -317,7 +275,10 @@ void syncRTC() {
   // Set RTC time
   DateTime dateTime = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   rtc.adjust(dateTime);
-  // writeToEEPROM(0, &dateTime, sizeof(DateTime));
+  settings.lastDateTimeSync = rtc.now().unixtime();
+  settings.updatedOn = rtc.now().unixtime();
+  EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+  EEPROM.commit();
   TRACE("RTC synced with NTP time\n");
 }
 
@@ -334,6 +295,12 @@ void handleSysInfo() {
   result += "  \"boardTemperature\": " + String(rtc.getTemperature()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
+  result += "  \"settings\": {\n";
+  result += "    \"id\": " + String(settings.id) + ",\n";
+  result += "    \"name\": \"" + String(settings.name) + "\",\n";
+  result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
+  result += "    \"updatedOn\": " + String(settings.updatedOn) + "\n";
+  result += "  }\n";
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
   // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
   result += "}";
@@ -370,6 +337,33 @@ void handleValve() {
   }
 }
 
+
+void handleSaveSettings() {
+  if (server.method() == HTTP_POST) {
+    if (server.hasArg("plain") == false) {
+      // handle error here
+      server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+    }
+    JsonDocument json;
+    DeserializationError error = deserializeJson(json, server.arg("plain"));
+    
+    if (error) {
+      server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    String name = json["name"];
+    memcpy(settings.name, name.c_str(), SETTING_MAX_NAME);
+    settings.id = json["id"];
+    settings.updatedOn = rtc.now().unixtime();
+    EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+    EEPROM.commit();
+    server.send(200, "application/json", "{\"success\":true}");
+  } else {
+    server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+  }
+}
+
 void errorMsg(String error, bool restart) {
   Serial.println(error);
   if (restart) {
@@ -401,29 +395,31 @@ void loop() {
   displayTime();
 }
 
-void writeToEEPROM(int address, void* data, size_t length) {
-  Wire.beginTransmission(EEPROM_ADDR);
-  Wire.write((uint8_t)(address >> 8)); // MSB of address
-  Wire.write((uint8_t)(address & 0xFF)); // LSB of address
-  uint8_t* byteData = (uint8_t*)data;
-  for (size_t i = 0; i < length; i++) {
-    Wire.write(byteData[i]);
-  }
-  Wire.endTransmission();
-  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
-}
+// void writeToEEPROM(int address, void* data, size_t length) {
+//   Wire.beginTransmission(EEPROM_ADDRESS);
+//   Wire.write((uint8_t)(address >> 8)); // MSB of address
+//   Wire.write((uint8_t)(address & 0xFF)); // LSB of address
+//   byte* byteData = (byte*)data;
+//   TRACE("SAVING: %d\n", length);
+//   for (size_t i = 0; i < length; i++) {
+//     TRACE("%c", byteData[i]);
+//     Wire.write(byteData[i]);
+//   }
+//   Wire.endTransmission();
+//   vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
+// }
 
 void readFromEEPROM(int address, void* data, size_t length) {
-  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.beginTransmission(EEPROM_ADDRESS);
   Wire.write((uint8_t)(address >> 8)); // MSB of address
   Wire.write((uint8_t)(address & 0xFF)); // LSB of address
   Wire.endTransmission();
-  Wire.requestFrom(EEPROM_ADDR, length);
+  Wire.requestFrom(EEPROM_ADDRESS, length);
   TRACE("Requested: %d\n", length);
   uint8_t* byteData = (uint8_t*)data;
   while (Wire.available()) {
     byte datum = Wire.read();
-    TRACE("%c", datum);
+    TRACE("C: %c", datum);
   }
   Serial.println();
   vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
