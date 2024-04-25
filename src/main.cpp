@@ -60,18 +60,33 @@ void setup() {
 
   // Ask for the current time using NTP request builtin into ESP firmware.
   TRACE("Setup ntp...\n");
-  configTzTime(TIMEZONE, "pool.ntp.org");
+  // initTime("WET0WEST,M3.5.0/1,M10.5.0");   // Set for Melbourne/AU
+  initTime(TIMEZONE);   // Set for Melbourne/AU
+  printLocalTime();
+  // configTime(0, 0, "pool.ntp.com");
 
-  // Wait for time to synchronize
-  while (!time(nullptr)) {
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-  }
+  // // Wait for time to synchronize
+  // while (!time(nullptr)) {
+  //   vTaskDelay(500 / portTICK_PERIOD_MS);
+  //   TRACE("Waiting for time sync...");
+  // }
 
-  time_t now = time(nullptr);
-  struct tm *timeinfo;
-  timeinfo = localtime(&now);
+  // struct tm timeinfo;
+  // if(!getLocalTime(&timeinfo)){
+  //   TRACE("Failed to obtain time\n");
+  // }
+  // setTimezone(TIMEZONE);  
 
-  Serial.printf("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+  // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+
+  // Sync RTC
+  // syncRTC();
+
+  // time_t now = time(nullptr);
+  // struct tm *timeinfo;
+  // timeinfo = localtime(&now);
+
+  // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
 
 
   // REST Endpoint
@@ -83,6 +98,36 @@ void setup() {
   server.begin();
 
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+}
+
+void setTimezone(String timezone) {
+  TRACE(" Setting Timezone to %s\n", timezone.c_str());
+  setenv("TZ", timezone.c_str(),1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
+  tzset();
+}
+
+void initTime(String timezone) {
+  struct tm timeinfo;
+
+  TRACE("Setting up time");
+  configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset
+  if(!getLocalTime(&timeinfo)){
+    TRACE("Failed to obtain time");
+    return;
+  }
+  TRACE("Got the time from NTP");
+  // Now we can set the real timezone
+  setTimezone(timezone);
+  syncRTC();
+}
+
+void printLocalTime() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time 1");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
 }
 
 void printI2cDevices() {
@@ -153,6 +198,7 @@ void displayTime() {
   display.setCursor(0,0);
   display.print("SSID:"); display.println(WIFI_SSID);
   display.print("IP:"); display.println(ip);
+  display.print("C: "), display.println(rtc.getTemperature());
   display.println(time);
   display.setCursor(0,0);
   display.display(); // actually display all of the above
@@ -198,6 +244,18 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
   return isConnected();
 }
 
+void syncRTC() {
+  // Get current time from NTP server
+  time_t now = time(nullptr);
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  // Set RTC time
+  rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+  Serial.println("RTC synced with NTP time");
+}
+
 // This function is called when the sysInfo service was requested.
 void handleSysInfo() {
   String result;
@@ -218,6 +276,10 @@ void handleSysInfo() {
 
 void handleValve() {
   if (server.method() == HTTP_POST) {
+    if (server.hasArg("plain") == false) {
+      // handle error here
+      server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+    }
     JsonDocument json;
     DeserializationError error = deserializeJson(json, server.arg("plain"));
     
@@ -263,5 +325,10 @@ void loop() {
   // }
   // vTaskDelay(500 / portTICK_PERIOD_MS);
   server.handleClient();
+  // time_t now = time(nullptr);
+  // struct tm *timeinfo;
+  // timeinfo = localtime(&now);
+
+  // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
   displayTime();
 }

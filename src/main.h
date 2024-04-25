@@ -69,3 +69,7 @@ bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
 void handleSysInfo();
 void handleValve();
+void syncRTC();
+void setTimezone(String timezone);
+void initTime(String timezone);
+void printLocalTime();
