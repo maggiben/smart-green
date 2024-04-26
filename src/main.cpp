@@ -1,10 +1,9 @@
 #include "main.h"
 
-
 void setupMcp() {
   // uncomment appropriate mcp.begin
   if (!mcp.begin_I2C()) {
-    Serial.println("MCP I2c Error.");
+    TRACE("MCP I2c Error\n");
   }
   for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
     mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
@@ -38,7 +37,7 @@ void setup() {
   }
 
   if (rtc.lostPower()) {
-    Serial.println("RTC lost power, let's set the time!");
+    TRACE("RTC lost power, let's set the time!\n");
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -72,22 +71,27 @@ void setup() {
 
   // Ask for the current time using NTP request builtin into ESP firmware.
   TRACE("Setup ntp...\n");
-  // initTime("WET0WEST,M3.5.0/1,M10.5.0");   // Set for Melbourne/AU
   initTime(TIMEZONE);   // Set for Melbourne/AU
   printLocalTime();
 
+  // Enable CORS header in webserver results
+  server.enableCORS(true);
   // REST Endpoint (Only if Connected)
   server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
   server.on("/api/settings", HTTP_POST, handleSaveSettings);
+  // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
   server.on("/api/valve", HTTP_POST, handleValve);
-  // Enable CORS header in webserver results
-  server.enableCORS(true);
   // Start Server
   server.begin();
 
-  // TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+  TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
   printI2cDevices();
+
+  // //create a task that executes the Task0code() function, with priority 1 and executed on core 0
+  // xTaskCreatePinnedToCore(Task0code, "Task0", 10000, NULL, 1, &Task0, 0);
+  // //create a task that executes the Task0code() function, with priority 1 and executed on core 1
+  // xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
 }
 
 // TRACE();
@@ -118,17 +122,17 @@ void initTime(String timezone) {
 void printLocalTime() {
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time 1");
+    TRACE("Failed to obtain time 1\n");
     return;
   }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+  PRINTLN(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
 }
 
 void printI2cDevices() {
   byte error, address;
   int nDevices;
  
-  Serial.println("Scanning...");
+  TRACE("Scanning...\n");
  
   nDevices = 0;
   for(address = 1; address < 127; address++ )
@@ -141,27 +145,26 @@ void printI2cDevices() {
  
     if (error == 0)
     {
-      Serial.print("I2C device found at address 0x");
+      TRACE("I2C device found at address 0x");
       if (address<16)
-        Serial.print("0");
-      Serial.print(address,HEX);
-      Serial.println("  !");
+        TRACE("0");
+      PRINT(address, HEX);
+      PRINTLN("  !");
  
       nDevices++;
     }
     else if (error==4)
     {
-      Serial.print("Unknown error at address 0x");
-      if (address<16)
-        Serial.print("0");
-      Serial.println(address,HEX);
+      TRACE("Unknown error at address 0x");
+      if (address < 16)
+        TRACE("0");
+      PRINTLN(address, HEX);
     }    
   }
   if (nDevices == 0)
-    Serial.println("No I2C devices found\n");
+    TRACE("No I2C devices found\n");
   else
-    Serial.println("done\n");
- 
+    TRACE("done\n");
 }
 
 void displayTime() {
@@ -316,7 +319,7 @@ void handleSysInfo() {
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
-  result += "    \"rebootOnWifiFail\": " + String(settings.rebootOnWifiFail) + "\n";
+  result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + "\n";
   result += "  }\n";
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
   // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
@@ -426,39 +429,3 @@ void loop() {
   displayTime();
 }
 
-// void writeToEEPROM(int address, void* data, size_t length) {
-//   Wire.beginTransmission(EEPROM_ADDRESS);
-//   Wire.write((uint8_t)(address >> 8)); // MSB of address
-//   Wire.write((uint8_t)(address & 0xFF)); // LSB of address
-//   byte* byteData = (byte*)data;
-//   TRACE("SAVING: %d\n", length);
-//   for (size_t i = 0; i < length; i++) {
-//     TRACE("%c", byteData[i]);
-//     Wire.write(byteData[i]);
-//   }
-//   Wire.endTransmission();
-//   vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
-// }
-
-void readFromEEPROM(int address, void* data, size_t length) {
-  Wire.beginTransmission(EEPROM_ADDRESS);
-  Wire.write((uint8_t)(address >> 8)); // MSB of address
-  Wire.write((uint8_t)(address & 0xFF)); // LSB of address
-  Wire.endTransmission();
-  Wire.requestFrom(EEPROM_ADDRESS, length);
-  TRACE("Requested: %d\n", length);
-  uint8_t* byteData = (uint8_t*)data;
-  while (Wire.available()) {
-    byte datum = Wire.read();
-    TRACE("C: %c", datum);
-  }
-  Serial.println();
-  vTaskDelay(100 / portTICK_PERIOD_MS); // Delay to allow EEPROM write cycle to complete
-  // if (Wire.available() >= length) {
-  //   TRACE("DATA AVAILABLE\n");
-  //   for (size_t i = 0; i < length; i++) {
-  //     byteData[i] = Wire.read();
-  //     TRACE("DATA: %s\n", byteData[i]);
-  //   }
-  // }
-}

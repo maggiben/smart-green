@@ -32,7 +32,7 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  **/
-
+#pragma once
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SPI.h>
@@ -77,18 +77,23 @@ IPAddress ip;
 
 // Need a WebServer for http access on port 80.
 WebServer server(80);
+// Need a WebServer for http access on port 80.
 #ifndef server
   #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
   #define SERVER_RESPONSE_SUCCESS()  SERVER_RESPONSE_OK("{\"success\":true}")
   #define SERVER_RESPONSE_ERROR(code, ...)  server.send(code, "application/jsont; charset=utf-8", __VA_ARGS__)
 #endif
 
+#ifndef Task0
+  TaskHandle_t Task0;
+#endif
+#ifndef Task1
+  TaskHandle_t Task1;
+#endif
+
 void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
-void handleSysInfo();
-void handleValve();
-void handleSaveSettings();
 void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);
@@ -96,4 +101,12 @@ void printLocalTime();
 void printI2cDevices();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
-byte* get2cDevices();
+
+// REST API
+void turnOnPin(int pinNumber);
+void get2cDevices(byte* devices);
+String getI2cDeviceList();
+// This function is called when the sysInfo service was requested.
+void handleSysInfo();
+void handleValve();
+void handleSaveSettings();

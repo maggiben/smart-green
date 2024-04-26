@@ -14,4 +14,5 @@
 #define TRACE(...)                  Serial.printf(__VA_ARGS__)
 #define PRINT(...)                  Serial.print(__VA_ARGS__)
 #define PRINTLN(...)                Serial.println(__VA_ARGS__)
+#define JSONBOOL(value)             value ? F("true") : F("false")
 
