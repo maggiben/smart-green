@@ -164,23 +164,6 @@ void printI2cDevices() {
  
 }
 
-void printRtcTime() {
-  DateTime now = rtc.now();
-
-  Serial.print(now.year(), DEC);
-  Serial.print('/');
-  Serial.print(now.month(), DEC);
-  Serial.print('/');
-  Serial.print(now.day(), DEC);
-  Serial.print(" ");
-  Serial.print(now.hour(), DEC);
-  Serial.print(':');
-  Serial.print(now.minute(), DEC);
-  Serial.print(':');
-  Serial.print(now.second(), DEC);
-  Serial.println();
-}
-
 void displayTime() {
   // text display tests
   DateTime now = rtc.now();
@@ -255,6 +238,63 @@ void syncRTC() {
   TRACE("RTC synced with NTP time\n");
 }
 
+void get2cDevices(byte* devices) {
+  byte error, address;
+  int nDevices;
+
+  memset(devices, 0, sizeof(byte) * MAX_I2C_DEVICES);
+ 
+  TRACE("Scanning...\n");
+ 
+  nDevices = 0;
+  for(address = 1; address < MAX_I2C_DEVICES; address++) {
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+ 
+    if (error == 0)
+    {
+      TRACE("I2C device found at address 0x");
+      devices[nDevices] = address;
+      if (devices[nDevices] < 16)
+        TRACE("0");
+      PRINT(devices[nDevices], HEX);
+      TRACE("  !\n");
+      nDevices++;
+    }
+    else if (error == 4)
+    {
+      TRACE("Unknown error at address 0x");
+      if (address < 16)
+        TRACE("0");
+      PRINTLN(address, HEX);
+    }    
+  }
+  if (nDevices == 0)
+    TRACE("No I2C devices found\n");
+  else
+    TRACE("Done\n");
+ 
+  return;
+}
+
+String getI2cDeviceList() {
+  String result = "[";
+  byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
+  get2cDevices(i2cDevices);
+  for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
+    result += String(i2cDevices[i]);
+    if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
+      result += ", ";
+    }
+  }
+  result += "]";
+  free(i2cDevices);
+  return result;
+}
+
 // This function is called when the sysInfo service was requested.
 void handleSysInfo() {
   String result;
@@ -270,6 +310,7 @@ void handleSysInfo() {
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   result += "  \"time\": " + String(rtc.now().unixtime()) + ",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
+  result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
@@ -368,12 +409,10 @@ void errorMsg(String error, bool restart) {
 void loop() {
   // put your main code here, to run repeatedly:
   // printI2cDevices();
-  // printRtcTime();
   // displayTime();
   // for (int i = 0; i < 16; i++) {
   //   turnOnPin(i);
   //   vTaskDelay(2000 / portTICK_PERIOD_MS);
-  //   printRtcTime();
   //   displayTime();
   // }
   // vTaskDelay(500 / portTICK_PERIOD_MS);

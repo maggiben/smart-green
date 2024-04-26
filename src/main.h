@@ -96,3 +96,4 @@ void printLocalTime();
 void printI2cDevices();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
+byte* get2cDevices();
