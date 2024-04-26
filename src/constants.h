@@ -3,6 +3,7 @@
 #define WIFI_PASSWORD               "pirulo123"
 #define HOSTNAME                    "indoor"
 #define TIMEZONE                    "ART3ARST,M10.1.0/0,M3.3.0/0" // https://gist.github.com/tivaliy/a5ef9c7ccb4d57bdc248f0855c5eb1ff
+#define I2C_MCP_PINCOUNT            12
 #define EEPROM_ADDRESS              0x57
 #define EEPROM_SIZE                 4096
 #define EEPROM_SETTINGS_ADDRESS     0

@@ -48,7 +48,21 @@
 #include "settings.h"
 
 // Settings
-Settings settings;
+Settings settings = {
+  // Assuming HOSTNAME is defined
+  HOSTNAME,
+  // Assuming id is 0
+  0,
+  // Assuming lastDateTimeSync is 0
+  0,
+  // Assuming updatedOn is 0
+  0,
+  // Assuming reboot on wifi failed is false
+  false,
+  // Initializing alarms to 0
+  {{0}}
+};
+
 // i2c Clock
 RTC_DS3231 rtc; // Address 0x68
 
@@ -63,6 +77,11 @@ IPAddress ip;
 
 // Need a WebServer for http access on port 80.
 WebServer server(80);
+#ifndef server
+  #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
+  #define SERVER_RESPONSE_SUCCESS()  SERVER_RESPONSE_OK("{\"success\":true}")
+  #define SERVER_RESPONSE_ERROR(code, ...)  server.send(code, "application/jsont; charset=utf-8", __VA_ARGS__)
+#endif
 
 void errorMsg(String error, bool restart = true);
 bool isConnected();

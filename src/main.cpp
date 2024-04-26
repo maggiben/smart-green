@@ -6,7 +6,7 @@ void setupMcp() {
   if (!mcp.begin_I2C()) {
     Serial.println("MCP I2c Error.");
   }
-  for (int i = 0; i < 16; i++) {
+  for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
     mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
     mcp.digitalWrite(i, HIGH); // Set all GPIO pins to LOW
   }
@@ -52,9 +52,12 @@ void setup() {
   display.clearDisplay();
   display.display();
 
-
+  // Setup i2c port extender
   setupMcp();
 
+  // EEPROM
+  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
+  TRACE("EEPROM2: %s now: %d\n", settings.hostname, rtc.now().unixtime());
 
   connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
   
@@ -67,40 +70,11 @@ void setup() {
     errorMsg("Error connecting to WiFi");
   }
 
-  // EEPROM
-  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
-  TRACE("EEPROM2: %s now: %d\n", settings.name, rtc.now().unixtime());
   // Ask for the current time using NTP request builtin into ESP firmware.
   TRACE("Setup ntp...\n");
   // initTime("WET0WEST,M3.5.0/1,M10.5.0");   // Set for Melbourne/AU
   initTime(TIMEZONE);   // Set for Melbourne/AU
   printLocalTime();
-
-  // configTime(0, 0, "pool.ntp.com");
-
-  // // Wait for time to synchronize
-  // while (!time(nullptr)) {
-  //   vTaskDelay(500 / portTICK_PERIOD_MS);
-  //   TRACE("Waiting for time sync...");
-  // }
-
-  // struct tm timeinfo;
-  // if(!getLocalTime(&timeinfo)){
-  //   TRACE("Failed to obtain time\n");
-  // }
-  // setTimezone(TIMEZONE);  
-
-  // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
-
-  // Sync RTC
-  // syncRTC();
-
-  // time_t now = time(nullptr);
-  // struct tm *timeinfo;
-  // timeinfo = localtime(&now);
-
-  // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-
 
   // REST Endpoint (Only if Connected)
   server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
@@ -214,7 +188,6 @@ void displayTime() {
   memset(time, 0, sizeof(char) * 64);
   sprintf(time, "Time: %02d:%02d:%02d", now.hour(), now.minute(), now.second() );
   display.clearDisplay();
-  display.display();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
@@ -228,7 +201,7 @@ void displayTime() {
 }
 
 void turnOnPin(int pinNumber) {
-  if (pinNumber >= 0 && pinNumber < 16) {
+  if (pinNumber >= 0 && pinNumber < I2C_MCP_PINCOUNT) {
     for (int i = 0; i < 16; i++) {
       if (i == pinNumber) {
         mcp.digitalWrite(i, LOW); // Turn on the specified pin
@@ -246,7 +219,7 @@ bool isConnected() {
 bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pause) {
   int i = 0;
   // allow to address the device by the given name e.g. http://webserver
-  WiFi.setHostname(HOSTNAME);
+  WiFi.setHostname(settings.hostname);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -258,7 +231,7 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
   WiFi.begin(ssid, password);
   do {
     vTaskDelay(pause / portTICK_PERIOD_MS);
-    Serial.print(".");
+    TRACE(".");
     i++;
   } while (!isConnected() && i < max_tries);
   WiFi.setAutoReconnect(true);
@@ -286,20 +259,24 @@ void syncRTC() {
 void handleSysInfo() {
   String result;
 
+
   result += "{\n";
   result += "  \"chipModel\": \"" + String(ESP.getChipModel()) + "\",\n";
   result += "  \"chipCores\": " + String(ESP.getChipCores()) + ",\n";
   result += "  \"chipRevision\": " + String(ESP.getChipRevision()) + ",\n";
   result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
-  result += "  \"boardTemperature\": " + String(rtc.getTemperature()) + ",\n";
+  result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
+  result += "  \"time\": " + String(rtc.now().unixtime()) + ",\n";
+  result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
-  result += "    \"name\": \"" + String(settings.name) + "\",\n";
+  result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
-  result += "    \"updatedOn\": " + String(settings.updatedOn) + "\n";
+  result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
+  result += "    \"rebootOnWifiFail\": " + String(settings.rebootOnWifiFail) + "\n";
   result += "  }\n";
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
   // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
@@ -313,27 +290,34 @@ void handleValve() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
       // handle error here
-      server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
     }
     JsonDocument json;
     DeserializationError error = deserializeJson(json, server.arg("plain"));
     
     if (error) {
-      server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      // server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
     int pin = json["pin"];
     String value = json["value"];
 
-    if (value == "on" && pin >= 0 && pin <= 11) {
+    if (value == "on" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
       turnOnPin(pin);
-      server.send(200, "application/json", "{\"success\":true}");
+      SERVER_RESPONSE_SUCCESS();
+    } else if (value == "off" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
+      mcp.digitalWrite(pin, HIGH);
+      // server.send(200, "application/json", "{\"success\":true}");
+      SERVER_RESPONSE_SUCCESS();
     } else {
-      server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+      // server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
     }
   } else {
-    server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+    // server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
   }
 }
 
@@ -342,34 +326,40 @@ void handleSaveSettings() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
       // handle error here
-      server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
     }
     JsonDocument json;
     DeserializationError error = deserializeJson(json, server.arg("plain"));
     
     if (error) {
-      server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
-    String name = json["name"];
-    memcpy(settings.name, name.c_str(), SETTING_MAX_NAME);
+    String hostname = json["hostname"];
+    if (!hostname.isEmpty()) {
+      TRACE("Setting hostname %s", hostname.c_str());
+      memcpy(settings.hostname, hostname.c_str(), HOSTNAME_MAX_LENGTH);
+      WiFi.setHostname(hostname.c_str());
+    }
     settings.id = json["id"];
     settings.updatedOn = rtc.now().unixtime();
     EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
     EEPROM.commit();
-    server.send(200, "application/json", "{\"success\":true}");
+    SERVER_RESPONSE_OK("{\"success\":true}");
   } else {
-    server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
   }
 }
 
 void errorMsg(String error, bool restart) {
-  Serial.println(error);
+  TRACE("Error: %s", error.c_str());
   if (restart) {
-    Serial.println("Rebooting now...");
+    TRACE("Rebooting now...\n");
     vTaskDelay(2000 / portTICK_PERIOD_MS);
-    ESP.restart();
+    if (settings.rebootOnWifiFail) {
+      ESP.restart();
+    }
     vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }
@@ -392,6 +382,7 @@ void loop() {
   // timeinfo = localtime(&now);
 
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   displayTime();
 }
 
