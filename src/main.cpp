@@ -259,7 +259,6 @@ void syncRTC() {
 void handleSysInfo() {
   String result;
 
-
   result += "{\n";
   result += "  \"chipModel\": \"" + String(ESP.getChipModel()) + "\",\n";
   result += "  \"chipCores\": " + String(ESP.getChipCores()) + ",\n";
@@ -283,7 +282,7 @@ void handleSysInfo() {
   result += "}";
 
   server.sendHeader("Cache-Control", "no-cache");
-  server.send(200, "text/javascript; charset=utf-8", result);
+  SERVER_RESPONSE_OK(result);
 }
 
 void handleValve() {
@@ -291,12 +290,12 @@ void handleValve() {
     if (server.hasArg("plain") == false) {
       // handle error here
       SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      return;
     }
-    JsonDocument json;
-    DeserializationError error = deserializeJson(json, server.arg("plain"));
     
-    if (error) {
-      // server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    JsonDocument json;
+    
+    if (deserializeJson(json, server.arg("plain"))) {
       SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
       return;
     }
@@ -307,18 +306,20 @@ void handleValve() {
     if (value == "on" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
       turnOnPin(pin);
       SERVER_RESPONSE_SUCCESS();
+      return;
     } else if (value == "off" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
       mcp.digitalWrite(pin, HIGH);
-      // server.send(200, "application/json", "{\"success\":true}");
       SERVER_RESPONSE_SUCCESS();
+      return;
     } else {
-      // server.send(400, "application/json", "{\"error\":\"Invalid value\"}");
       SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      return;
     }
   } else {
-    // server.send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
     SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    return;
   }
+  return;
 }
 
 
