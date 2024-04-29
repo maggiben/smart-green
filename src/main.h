@@ -32,7 +32,7 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  **/
-#pragma once
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SPI.h>
@@ -91,6 +91,7 @@ WebServer server(80);
   TaskHandle_t Task1;
 #endif
 
+void beep(uint8_t times);
 void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
@@ -110,3 +111,4 @@ String getI2cDeviceList();
 void handleSysInfo();
 void handleValve();
 void handleSaveSettings();
+void handlePump();

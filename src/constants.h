@@ -15,4 +15,7 @@
 #define PRINT(...)                  Serial.print(__VA_ARGS__)
 #define PRINTLN(...)                Serial.println(__VA_ARGS__)
 #define JSONBOOL(value)             value ? F("true") : F("false")
+#define BUZZER_PIN                 32
+#define PUMP1_PIN                  12
+#define PUMP2_PIN                  13
 

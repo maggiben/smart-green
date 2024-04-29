@@ -7,7 +7,18 @@ void setupMcp() {
   }
   for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
     mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
-    mcp.digitalWrite(i, HIGH); // Set all GPIO pins to LOW
+    mcp.digitalWrite(i, HIGH); // Set all GPIO pins to HIGH
+  }
+}
+
+void beep(uint8_t times) {
+  TRACE("beeping times: %d", times);
+  pinMode(BUZZER_PIN, OUTPUT);
+  for(uint8_t i = 0; i <= times; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    digitalWrite(BUZZER_PIN, LOW);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
@@ -25,14 +36,16 @@ void setup() {
   Wire.beginTransmission(EEPROM_ADDRESS);
   if (Wire.endTransmission() != 0) {
     TRACE("EEPROM not found or not ready");
+    beep(2);
     // ESP.restart();
   }
 
   EEPROM.begin(EEPROM_SIZE);
 
   if (!rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    TRACE("Couldn't find RTC");
     Serial.flush();
+    beep(2);
     abort();
   }
 
@@ -44,6 +57,7 @@ void setup() {
     // This line sets the RTC with an explicit date & time, for example to set
     // January 21, 2014 at 3am you would call:
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    beep(2);
   }
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
@@ -65,7 +79,8 @@ void setup() {
     TRACE("\n");
     TRACE("Connected: "); PRINT(ip); TRACE("\n");
   } else {
-    TRACE("\n");    
+    TRACE("\n");  
+    beep(2);  
     errorMsg("Error connecting to WiFi");
   }
 
@@ -81,12 +96,15 @@ void setup() {
   server.on("/api/settings", HTTP_POST, handleSaveSettings);
   // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
   server.on("/api/valve", HTTP_POST, handleValve);
+  server.on("/api/pump", HTTP_POST, handlePump);
   // Start Server
   server.begin();
 
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
   printI2cDevices();
+
+  beep(5);
 
   // //create a task that executes the Task0code() function, with priority 1 and executed on core 0
   // xTaskCreatePinnedToCore(Task0code, "Task0", 10000, NULL, 1, &Task0, 0);
@@ -367,6 +385,46 @@ void handleValve() {
 }
 
 
+void handlePump() {
+  if (server.method() == HTTP_POST) {
+    if (server.hasArg("plain") == false) {
+      // handle error here
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      return;
+    }
+    
+    JsonDocument json;
+    
+    if (deserializeJson(json, server.arg("plain"))) {
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    int pin = json["pump"];
+    String value = json["value"];
+
+    if (value == "on" && pin != 1 || pin <= 2) {
+      uint8_t onPort = pin == 1 ? PUMP2_PIN : PUMP2_PIN;
+      uint8_t offPort = pin == 1 ? PUMP2_PIN : PUMP2_PIN;
+      mcp.digitalWrite(onPort, LOW);
+      mcp.digitalWrite(offPort, HIGH);
+      SERVER_RESPONSE_SUCCESS();
+      return;
+    } else if (value == "off" && 1 >= 0 && pin <= 2) {
+      uint8_t port = pin == 1 ? PUMP1_PIN : PUMP2_PIN;
+      mcp.digitalWrite(port, HIGH);
+      SERVER_RESPONSE_SUCCESS();
+      return;
+    } else {
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      return;
+    }
+  } else {
+    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    return;
+  }
+  return;
+}
 void handleSaveSettings() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
