@@ -132,7 +132,8 @@ void pulseCounter() {
   // Increment the pulse counter
   int value = digitalRead(FLOW_METER_PIN);
   if (FLOW_SENSOR_STATE != value) {
-    FLOW_METER_PULE_COUNT++;
+    FLOW_METER_PULSE_COUNT++;
+    FLOW_METER_TOTAL_PULSE_COUNT++;
     FLOW_SENSOR_STATE = value;
   }
 }
@@ -154,62 +155,47 @@ void displayFlow() {
     // scale the output. We also apply the calibrationFactor to scale the output based on 
     // the number of pulses per second per units of measure (litres/minute in this case) 
     // coming from the sensor.
-    FLOW_RATE = ((1000.0 / (millis() - PREV_INT_TIME)) * FLOW_METER_PULE_COUNT) / FLOW_CALIBRATION_FACTOR;
+    FLOW_RATE = ((1000.0 / (millis() - OLD_INT_TIME)) * FLOW_METER_PULSE_COUNT) / FLOW_CALIBRATION_FACTOR;
 
-    PREV_INT_TIME = millis();
     // Divide the flow rate in litres/minute by 60 to determine how many litres have
     // passed through the sensor in this 1 second interval, then multiply by 1000 to
     // convert to millilitres.
-    FLOW_MILLILITRES = (FLOW_RATE / 60) * 1000;
+    FLOW_MILLILITRES = FLOW_METER_PULSE_COUNT == 0 ? 0 : (FLOW_RATE / 60) * 1000;
 
     // Add the millilitres passed in this second to the cumulative total
-    if (FLOW_MILLILITRES > 0) {
-      TOTAL_MILLILITRES += FLOW_MILLILITRES;
-    } else if (FLOW_MILLILITRES < 0) {
-      beep(5);
-      break;
-    }
-
-    // Print the flow rate for this second in litres / minute
-    Serial.print("Flow rate: ");
-    Serial.print(FLOW_MILLILITRES, DEC);  // Print the integer part of the variable
-    Serial.println("mL/s");
-
-    // Print the cumulative total of litres flowed since starting
-    Serial.print("Total: ");        
-    Serial.print(TOTAL_MILLILITRES, DEC);
-    Serial.println("mL"); 
+    TOTAL_MILLILITRES += FLOW_MILLILITRES;
 
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
 
-
-    display.printf("RAW %.3f\n", FLOW_RATE);
+    display.printf("Raw: %.5f\n", FLOW_RATE);
 
     // display.print("Flow rate: ");
     // display.print(FLOW_MILLILITRES, DEC);  // Print the integer part of the variable
     // display.println(" mL/s");
 
-    display.printf("Flow rate: %.3f mL/s\n", FLOW_MILLILITRES);
+    display.printf("Flow: %.2fmL/s\n", FLOW_MILLILITRES);
 
     // display.print("Total: ");        
     // display.print(TOTAL_MILLILITRES, DEC);
     // display.println(" mL");
 
-    display.printf("Total: %.3f mL/s\n", FLOW_MILLILITRES);
+    // display.printf("Total: %lumL\n", TOTAL_MILLILITRES);
+    display.printf("Total: %lumL\n", TOTAL_MILLILITRES);
 
     // display.print("Secs: ");        
     // display.print((millis() - OLD_INT_TIME), DEC);
     // display.println("");
+
     display.printf("Secs: %d\n", millis() - OLD_INT_TIME);
     
     display.setCursor(0, 0);
     display.display(); // actually display all of the above
 
     // Reset the pulse counter so we can start incrementing again
-    FLOW_METER_PULE_COUNT = 0;
+    FLOW_METER_PULSE_COUNT = 0;
     // Enable the interrupt again now that we've finished sending output
     attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   }
@@ -441,7 +427,8 @@ void handleSysInfo() {
   result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
   result += "  \"mcp\": \"" + String(mcp.readGPIOAB()) + "\",\n";
   result += "  \"watering\": {\n";
-  result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + "\n";
+  result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
+  result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
   result += "  },\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
@@ -453,6 +440,9 @@ void handleSysInfo() {
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
   // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
   result += "}";
+
+
+  FLOW_METER_TOTAL_PULSE_COUNT = 0;
 
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
@@ -619,7 +609,7 @@ void handleTestFlow() {
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
-  for(uint8_t i = 0; i < 30; i++) {
+  for(uint8_t i = 0; i < 20; i++) {
     displayFlow();
   }
   detachInterrupt(FLOW_METER_INTERRUPT);

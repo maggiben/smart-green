@@ -96,13 +96,14 @@ WebServer server(80);
 #endif
 
 #ifndef ENABLE_FLOW
-  volatile byte FLOW_METER_PULE_COUNT = 0;
-  volatile unsigned long OLD_INT_TIME = 0;
-  volatile unsigned long PREV_INT_TIME = 0;
-  float FLOW_RATE                     = 0.0;
-  float FLOW_MILLILITRES              = 0.0;
-  float TOTAL_MILLILITRES             = 0.0;
-  uint8_t FLOW_SENSOR_STATE           = HIGH;
+  volatile byte FLOW_METER_PULSE_COUNT                 = 0;
+  volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT  = 0;
+  unsigned long OLD_INT_TIME                          = 0;
+  unsigned long PREV_INT_TIME                         = 0;
+  float FLOW_RATE                                     = 0.0;
+  unsigned int FLOW_MILLILITRES                       = 0;
+  unsigned long TOTAL_MILLILITRES                     = 0;
+  uint8_t FLOW_SENSOR_STATE                           = HIGH;
 #endif
 
 void pulseCounter();
