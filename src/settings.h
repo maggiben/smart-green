@@ -14,5 +14,6 @@ struct Settings {
   uint32_t lastDateTimeSync;
   uint32_t updatedOn;
   boolean rebootOnWifiFail;
+  float flowCalibrationFactor;
   uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_DATA_STORE];
 };

@@ -9,12 +9,13 @@ void setupMcp() {
     mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
     mcp.digitalWrite(i, HIGH); // Set all GPIO pins to HIGH
   }
+  mcp.writeGPIOAB(0b1111111111111111);
 }
 
 void beep(uint8_t times) {
-  TRACE("beeping times: %d", times);
+  TRACE("beeping times: %d\n", times);
   pinMode(BUZZER_PIN, OUTPUT);
-  for(uint8_t i = 0; i <= times; i++) {
+  for(uint8_t i = 0; i < times; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
     vTaskDelay(500 / portTICK_PERIOD_MS);
     digitalWrite(BUZZER_PIN, LOW);
@@ -40,13 +41,11 @@ void setup() {
     // ESP.restart();
   }
 
-  EEPROM.begin(EEPROM_SIZE);
-
   if (!rtc.begin()) {
     TRACE("Couldn't find RTC");
-    Serial.flush();
+    // Serial.flush();
     beep(2);
-    abort();
+    // abort();
   }
 
   if (rtc.lostPower()) {
@@ -60,13 +59,20 @@ void setup() {
     beep(2);
   }
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
-  // Clear the buffer.
-  display.clearDisplay();
-  display.display();
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {; // Address 0x3C for 128x32
+    TRACE("Display not working\n");
+    // Clear the buffer.
+    display.clearDisplay();
+    display.display();
+  }
 
   // Setup i2c port extender
   setupMcp();
+
+  printI2cDevices();
 
   // EEPROM
   EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
@@ -97,22 +103,104 @@ void setup() {
   // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
   server.on("/api/valve", HTTP_POST, handleValve);
   server.on("/api/pump", HTTP_POST, handlePump);
+  server.on("/api/testFlow", HTTP_GET, handleTestFlow);
   // Start Server
   server.begin();
 
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
-  printI2cDevices();
+  beep(3);
 
-  beep(5);
+  pinMode(FLOW_METER_PIN, INPUT);
+  pinMode(FLOW_METER_PIN, INPUT_PULLUP);
+  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
+  (state to LOW state)*/
+  attachInterrupt(digitalPinToInterrupt(FLOW_METER_INTERRUPT), pulseCounter, FALLING); //you can use Rising or Falling
 
+  displayTime();
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
+  (state to LOW state)*/
+  // attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING); //you can use Rising or Falling
   // //create a task that executes the Task0code() function, with priority 1 and executed on core 0
   // xTaskCreatePinnedToCore(Task0code, "Task0", 10000, NULL, 1, &Task0, 0);
   // //create a task that executes the Task0code() function, with priority 1 and executed on core 1
   // xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
 }
 
-// TRACE();
+void pulseCounter() {
+  // Increment the pulse counter
+  int value = digitalRead(FLOW_METER_PIN);
+  if (FLOW_SENSOR_STATE != value) {
+    FLOW_METER_PULE_COUNT++;
+    FLOW_SENSOR_STATE = value;
+  }
+}
+
+void displayFlow(bool calibrate) {
+  // Note the time this processing pass was executed. Note that because we've
+  // disabled interrupts the millis() function won't actually be incrementing right
+  // at this point, but it will still return the value it was set to just before
+  // interrupts went away.
+  OLD_INT_TIME = millis();
+  while((millis() - OLD_INT_TIME) < 1000) { 
+    // Disable the interrupt while calculating flow rate and sending the value to the host
+    detachInterrupt(FLOW_METER_INTERRUPT);
+
+    // Because this loop may not complete in exactly 1 second intervals we calculate the number of milliseconds that have passed since the last execution and use that to scale the output. We also apply the calibrationFactor to scale the output based on the number of pulses per second per units of measure (litres/minute in this case) coming from the sensor.
+    FLOW_RATE = ((1000.0 / (millis() - OLD_INT_TIME)) * FLOW_METER_PULE_COUNT) / FLOW_CALIBRATION_FACTOR;
+
+    // Divide the flow rate in litres/minute by 60 to determine how many litres have
+    // passed through the sensor in this 1 second interval, then multiply by 1000 to
+    // convert to millilitres.
+    FLOWM_MILLILITRES = (FLOW_RATE / 60) * 1000;
+
+    // Add the millilitres passed in this second to the cumulative total
+    TOTAL_MILLILITRES += FLOWM_MILLILITRES;
+
+    Serial.print("PREV PULE COUNT: ");
+    Serial.print(FLOW_METER_PULE_COUNT, DEC);
+    Serial.println("\n"); 
+
+    // Print the flow rate for this second in litres / minute
+    Serial.print("Flow rate: ");
+    Serial.print(FLOWM_MILLILITRES, DEC);  // Print the integer part of the variable
+    Serial.println("mL/s");
+
+    // Print the cumulative total of litres flowed since starting
+    Serial.print("Total: ");        
+    Serial.print(TOTAL_MILLILITRES, DEC);
+    Serial.println("mL"); 
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+
+    display.print("Pule count: ");
+    display.println(FLOW_METER_PULE_COUNT, DEC);
+
+    display.print("Flow rate: ");
+    display.print(FLOWM_MILLILITRES, DEC);  // Print the integer part of the variable
+    display.println(" mL/s");
+
+    display.print("Total: ");        
+    display.print(TOTAL_MILLILITRES, DEC);
+    display.println(" mL"); 
+
+    display.print("Secs: ");        
+    display.print((millis() - OLD_INT_TIME), DEC);
+    display.println(""); 
+    
+    display.setCursor(0, 0);
+    display.display(); // actually display all of the above
+
+    // Reset the pulse counter so we can start incrementing again
+    FLOW_METER_PULE_COUNT = 0;
+    // Enable the interrupt again now that we've finished sending output
+    attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+  }
+}
 
 void setTimezone(String timezone) {
   TRACE("Setting Timezone to: %s\n", timezone.c_str());
@@ -144,6 +232,12 @@ void printLocalTime() {
     return;
   }
   PRINTLN(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+}
+
+void printRtcTime() {
+  DateTime now = rtc.now();
+  TRACE("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
 void printI2cDevices() {
@@ -199,7 +293,7 @@ void displayTime() {
   display.print("IP:"); display.println(ip);
   display.print("C: "), display.println(rtc.getTemperature());
   display.println(time);
-  display.setCursor(0,0);
+  display.setCursor(0, 0);
   display.display(); // actually display all of the above
   free(time);
 }
@@ -332,6 +426,7 @@ void handleSysInfo() {
   result += "  \"time\": " + String(rtc.now().unixtime()) + ",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
+  result += "  \"mcp\": \"" + String(mcp.readGPIOAB()) + "\",\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
@@ -400,25 +495,27 @@ void handlePump() {
       return;
     }
 
-    int pin = json["pump"];
+    int pump = json["pump"];
     String value = json["value"];
 
-    if (value == "on" && pin != 1 || pin <= 2) {
-      uint8_t onPort = pin == 1 ? PUMP2_PIN : PUMP2_PIN;
-      uint8_t offPort = pin == 1 ? PUMP2_PIN : PUMP2_PIN;
-      mcp.digitalWrite(onPort, LOW);
-      mcp.digitalWrite(offPort, HIGH);
-      SERVER_RESPONSE_SUCCESS();
-      return;
-    } else if (value == "off" && 1 >= 0 && pin <= 2) {
-      uint8_t port = pin == 1 ? PUMP1_PIN : PUMP2_PIN;
-      mcp.digitalWrite(port, HIGH);
-      SERVER_RESPONSE_SUCCESS();
-      return;
-    } else {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
-      return;
-    }
+    mcp.digitalWrite(PUMP1_PIN, LOW);
+    SERVER_RESPONSE_SUCCESS();
+    // if (value == "on" && (pump == 1 || pump == 2)) {
+    //   uint8_t onPump = pump == 1 ? PUMP1_PIN : PUMP2_PIN;
+    //   uint8_t offPump = pump != 1 ? PUMP2_PIN : PUMP1_PIN;
+    //   mcp.digitalWrite(onPump, LOW);
+    //   mcp.digitalWrite(offPump, HIGH);
+    //   SERVER_RESPONSE_SUCCESS();
+    //   return;
+    // } else if (value == "off" && (pump == 1 || pump == 2)) {
+    //   uint8_t port = pump == 1 ? PUMP1_PIN : PUMP2_PIN;
+    //   mcp.digitalWrite(port, HIGH);
+    //   SERVER_RESPONSE_SUCCESS();
+    //   return;
+    // } else {
+    //   SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+    //   return;
+    // }
   } else {
     SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
     return;
@@ -468,6 +565,8 @@ void errorMsg(String error, bool restart) {
 }
 
 void loop() {
+  // static unsigned long oldTime = millis();
+  // Only process counters once per second 
   // put your main code here, to run repeatedly:
   // printI2cDevices();
   // displayTime();
@@ -483,7 +582,28 @@ void loop() {
   // timeinfo = localtime(&now);
 
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // if((millis() - oldTime) > 5000) { 
+  //   displayTime();
+  //   oldTime = millis();
+  //   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // }
+  // displayFlow();
+  // printLocalTime();
+  // printRtcTime();
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   displayTime();
 }
 
+void handleTestFlow() {
+  mcp.writeGPIOAB(0b1111111111111110);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  mcp.writeGPIOAB(0b1111101111111110);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Only process counters once per second
+  displayFlow(true);
+
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  mcp.writeGPIOAB(0b1111111111111111);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+}

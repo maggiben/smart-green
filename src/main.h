@@ -37,6 +37,8 @@
 #include <WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <FS.h>
+#include <SD.h>
 #include <EEPROM.h>
 #include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
 #include <Adafruit_GFX.h>
@@ -59,6 +61,8 @@ Settings settings = {
   0,
   // Assuming reboot on wifi failed is false
   false,
+  // Assuming liquid flow rate is 0
+  0.0,
   // Initializing alarms to 0
   {{0}}
 };
@@ -91,6 +95,19 @@ WebServer server(80);
   TaskHandle_t Task1;
 #endif
 
+#ifndef ENABLE_FLOW
+  volatile byte FLOW_METER_PULE_COUNT = 0;
+  volatile unsigned long OLD_INT_TIME = 0;
+  float FLOW_RATE                     = 0.0;
+  unsigned int FLOWM_MILLILITRES      = 0;
+  unsigned long TOTAL_MILLILITRES     = 0;
+  uint8_t FLOW_SENSOR_STATE           = HIGH;
+#endif
+
+void pulseCounter();
+void displayFlow(bool calibrate  = false);
+void handleTestFlow();
+
 void beep(uint8_t times);
 void errorMsg(String error, bool restart = true);
 bool isConnected();
@@ -112,3 +129,4 @@ void handleSysInfo();
 void handleValve();
 void handleSaveSettings();
 void handlePump();
+void displayTime();
