@@ -137,34 +137,42 @@ void pulseCounter() {
   }
 }
 
-void displayFlow(bool calibrate) {
+void displayFlow() {
   // Note the time this processing pass was executed. Note that because we've
   // disabled interrupts the millis() function won't actually be incrementing right
   // at this point, but it will still return the value it was set to just before
   // interrupts went away.
   OLD_INT_TIME = millis();
+  PREV_INT_TIME = millis();
+
   while((millis() - OLD_INT_TIME) < 1000) { 
     // Disable the interrupt while calculating flow rate and sending the value to the host
     detachInterrupt(FLOW_METER_INTERRUPT);
 
-    // Because this loop may not complete in exactly 1 second intervals we calculate the number of milliseconds that have passed since the last execution and use that to scale the output. We also apply the calibrationFactor to scale the output based on the number of pulses per second per units of measure (litres/minute in this case) coming from the sensor.
-    FLOW_RATE = ((1000.0 / (millis() - OLD_INT_TIME)) * FLOW_METER_PULE_COUNT) / FLOW_CALIBRATION_FACTOR;
+    // Because this loop may not complete in exactly 1 second intervals we calculate the 
+    // number of milliseconds that have passed since the last execution and use that to 
+    // scale the output. We also apply the calibrationFactor to scale the output based on 
+    // the number of pulses per second per units of measure (litres/minute in this case) 
+    // coming from the sensor.
+    FLOW_RATE = ((1000.0 / (millis() - PREV_INT_TIME)) * FLOW_METER_PULE_COUNT) / FLOW_CALIBRATION_FACTOR;
 
+    PREV_INT_TIME = millis();
     // Divide the flow rate in litres/minute by 60 to determine how many litres have
     // passed through the sensor in this 1 second interval, then multiply by 1000 to
     // convert to millilitres.
-    FLOWM_MILLILITRES = (FLOW_RATE / 60) * 1000;
+    FLOW_MILLILITRES = (FLOW_RATE / 60) * 1000;
 
     // Add the millilitres passed in this second to the cumulative total
-    TOTAL_MILLILITRES += FLOWM_MILLILITRES;
-
-    Serial.print("PREV PULE COUNT: ");
-    Serial.print(FLOW_METER_PULE_COUNT, DEC);
-    Serial.println("\n"); 
+    if (FLOW_MILLILITRES > 0) {
+      TOTAL_MILLILITRES += FLOW_MILLILITRES;
+    } else if (FLOW_MILLILITRES < 0) {
+      beep(5);
+      break;
+    }
 
     // Print the flow rate for this second in litres / minute
     Serial.print("Flow rate: ");
-    Serial.print(FLOWM_MILLILITRES, DEC);  // Print the integer part of the variable
+    Serial.print(FLOW_MILLILITRES, DEC);  // Print the integer part of the variable
     Serial.println("mL/s");
 
     // Print the cumulative total of litres flowed since starting
@@ -177,20 +185,25 @@ void displayFlow(bool calibrate) {
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
 
-    display.print("Pule count: ");
-    display.println(FLOW_METER_PULE_COUNT, DEC);
 
-    display.print("Flow rate: ");
-    display.print(FLOWM_MILLILITRES, DEC);  // Print the integer part of the variable
-    display.println(" mL/s");
+    display.printf("RAW %.3f\n", FLOW_RATE);
 
-    display.print("Total: ");        
-    display.print(TOTAL_MILLILITRES, DEC);
-    display.println(" mL"); 
+    // display.print("Flow rate: ");
+    // display.print(FLOW_MILLILITRES, DEC);  // Print the integer part of the variable
+    // display.println(" mL/s");
 
-    display.print("Secs: ");        
-    display.print((millis() - OLD_INT_TIME), DEC);
-    display.println(""); 
+    display.printf("Flow rate: %.3f mL/s\n", FLOW_MILLILITRES);
+
+    // display.print("Total: ");        
+    // display.print(TOTAL_MILLILITRES, DEC);
+    // display.println(" mL");
+
+    display.printf("Total: %.3f mL/s\n", FLOW_MILLILITRES);
+
+    // display.print("Secs: ");        
+    // display.print((millis() - OLD_INT_TIME), DEC);
+    // display.println("");
+    display.printf("Secs: %d\n", millis() - OLD_INT_TIME);
     
     display.setCursor(0, 0);
     display.display(); // actually display all of the above
@@ -427,6 +440,9 @@ void handleSysInfo() {
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
   result += "  \"mcp\": \"" + String(mcp.readGPIOAB()) + "\",\n";
+  result += "  \"watering\": {\n";
+  result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + "\n";
+  result += "  },\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
@@ -596,13 +612,18 @@ void loop() {
 }
 
 void handleTestFlow() {
+  TOTAL_MILLILITRES = 0;
   mcp.writeGPIOAB(0b1111111111111110);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111101111111110);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
-  // Only process counters once per second
-  displayFlow(true);
 
+  attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+  for(uint8_t i = 0; i < 30; i++) {
+    displayFlow();
+  }
+  detachInterrupt(FLOW_METER_INTERRUPT);
+  
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111111111111111);
   vTaskDelay(1000 / portTICK_PERIOD_MS);

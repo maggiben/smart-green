@@ -20,4 +20,4 @@
 #define PUMP2_PIN                   11
 #define FLOW_METER_PIN              33
 #define FLOW_METER_INTERRUPT        06
-#define FLOW_CALIBRATION_FACTOR     90
+#define FLOW_CALIBRATION_FACTOR     95

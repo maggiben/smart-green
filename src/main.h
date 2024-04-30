@@ -98,17 +98,18 @@ WebServer server(80);
 #ifndef ENABLE_FLOW
   volatile byte FLOW_METER_PULE_COUNT = 0;
   volatile unsigned long OLD_INT_TIME = 0;
+  volatile unsigned long PREV_INT_TIME = 0;
   float FLOW_RATE                     = 0.0;
-  unsigned int FLOWM_MILLILITRES      = 0;
-  unsigned long TOTAL_MILLILITRES     = 0;
+  float FLOW_MILLILITRES              = 0.0;
+  float TOTAL_MILLILITRES             = 0.0;
   uint8_t FLOW_SENSOR_STATE           = HIGH;
 #endif
 
 void pulseCounter();
-void displayFlow(bool calibrate  = false);
+void displayFlow();
 void handleTestFlow();
 
-void beep(uint8_t times);
+void beep(uint8_t uint8_t);
 void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
