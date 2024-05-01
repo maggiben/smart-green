@@ -33,6 +33,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  **/
 
+#pragma once
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SPI.h>
@@ -64,7 +65,7 @@ Settings settings = {
   // Assuming liquid flow rate is 0
   0.0,
   // Initializing alarms to 0
-  {{0}}
+  {{{0}}}
 };
 
 // i2c Clock
@@ -81,6 +82,7 @@ IPAddress ip;
 
 // Need a WebServer for http access on port 80.
 WebServer server(80);
+
 // Need a WebServer for http access on port 80.
 #ifndef server
   #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
@@ -95,15 +97,23 @@ WebServer server(80);
   TaskHandle_t Task1;
 #endif
 
+#ifndef IS_ALARM_ON
+  bool IS_ALARM_ON = false;
+#endif
+
 #ifndef ENABLE_FLOW
-  volatile byte FLOW_METER_PULSE_COUNT                 = 0;
-  volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT  = 0;
-  unsigned long OLD_INT_TIME                          = 0;
-  unsigned long PREV_INT_TIME                         = 0;
-  float FLOW_RATE                                     = 0.0;
-  unsigned int FLOW_MILLILITRES                       = 0;
-  unsigned long TOTAL_MILLILITRES                     = 0;
-  uint8_t FLOW_SENSOR_STATE                           = HIGH;
+  volatile byte FLOW_METER_PULSE_COUNT                  = 0;
+  volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
+  unsigned long OLD_INT_TIME                            = 0;
+  float FLOW_RATE                                       = 0.0;
+  unsigned int FLOW_MILLILITRES                         = 0;
+  unsigned long TOTAL_MILLILITRES                       = 0;
+  uint8_t FLOW_SENSOR_STATE                             = HIGH;
+#endif
+
+#ifndef DISPLAY_INFO
+  #define DISPLAY_INFO
+  byte DISPLAY_INFO_DATA = 0;
 #endif
 
 void pulseCounter();
@@ -131,4 +141,6 @@ void handleSysInfo();
 void handleValve();
 void handleSaveSettings();
 void handlePump();
+void handleAlarm();
 void displayTime();
+void pumpWater(void *parameter);

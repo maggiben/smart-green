@@ -12,17 +12,6 @@ void setupMcp() {
   mcp.writeGPIOAB(0b1111111111111111);
 }
 
-void beep(uint8_t times) {
-  TRACE("beeping times: %d\n", times);
-  pinMode(BUZZER_PIN, OUTPUT);
-  for(uint8_t i = 0; i < times; i++) {
-    digitalWrite(BUZZER_PIN, HIGH);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    digitalWrite(BUZZER_PIN, LOW);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-  }
-}
-
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -103,22 +92,27 @@ void setup() {
   // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
   server.on("/api/valve", HTTP_POST, handleValve);
   server.on("/api/pump", HTTP_POST, handlePump);
-  server.on("/api/testFlow", HTTP_GET, handleTestFlow);
+  server.on("/api/test-flow", HTTP_GET, handleTestFlow);
+  server.on("/api/alarm", HTTP_GET, handleAlarm);
+  server.on("/api/alarm", HTTP_POST, handleAlarm);
   // Start Server
   server.begin();
 
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
-  beep(3);
-
-  pinMode(FLOW_METER_PIN, INPUT);
-  pinMode(FLOW_METER_PIN, INPUT_PULLUP);
-  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
-  (state to LOW state)*/
-  attachInterrupt(digitalPinToInterrupt(FLOW_METER_INTERRUPT), pulseCounter, FALLING); //you can use Rising or Falling
+  beep(1);
 
   displayTime();
   vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+  // xTaskCreate(
+  //   taskFunction,       // Task function
+  //   "AlarmTask",        // Task name
+  //   2048,               // Stack size (bytes)
+  //   NULL,               // Task parameter
+  //   1,                  // Task priority
+  //   NULL                // Task handle
+  // );
   /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
   (state to LOW state)*/
   // attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING); //you can use Rising or Falling
@@ -144,7 +138,6 @@ void displayFlow() {
   // at this point, but it will still return the value it was set to just before
   // interrupts went away.
   OLD_INT_TIME = millis();
-  PREV_INT_TIME = millis();
 
   while((millis() - OLD_INT_TIME) < 1000) { 
     // Disable the interrupt while calculating flow rate and sending the value to the host
@@ -239,58 +232,27 @@ void printRtcTime() {
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
-void printI2cDevices() {
-  byte error, address;
-  int nDevices;
- 
-  TRACE("Scanning...\n");
- 
-  nDevices = 0;
-  for(address = 1; address < 127; address++ )
-  {
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmisstion to see if
-    // a device did acknowledge to the address.
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
- 
-    if (error == 0)
-    {
-      TRACE("I2C device found at address 0x");
-      if (address<16)
-        TRACE("0");
-      PRINT(address, HEX);
-      PRINTLN("  !");
- 
-      nDevices++;
-    }
-    else if (error==4)
-    {
-      TRACE("Unknown error at address 0x");
-      if (address < 16)
-        TRACE("0");
-      PRINTLN(address, HEX);
-    }    
-  }
-  if (nDevices == 0)
-    TRACE("No I2C devices found\n");
-  else
-    TRACE("done\n");
-}
-
 void displayTime() {
   // text display tests
   DateTime now = rtc.now();
   char * time = (char *) malloc(sizeof(char) * 64);
   memset(time, 0, sizeof(char) * 64);
-  sprintf(time, "Time: %02d:%02d:%02d", now.hour(), now.minute(), now.second() );
+  sprintf(time, "TIME: %02d:%02d:%02d", now.hour(), now.minute(), now.second() );
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
-  display.print("SSID:"); display.println(WIFI_SSID);
-  display.print("IP:"); display.println(ip);
-  display.print("C: "), display.println(rtc.getTemperature());
+  display.print("SSID: "); display.println(WIFI_SSID);
+  display.print("IP: "); display.println(ip);
+  // display.print("C: "); display.println(rtc.getTemperature());
+  if (DISPLAY_INFO_DATA == 0) {
+    display.print("Alarm: "); display.println(String(isAlarmOn(settings, rtc.now())));
+  } else if (DISPLAY_INFO_DATA == 1) {
+    display.print("Week: "); display.println( String((8 & (1 << rtc.now().dayOfTheWeek()))) && (rtc.now().minute() > settings.alarm[0][0][2])    );
+  }
+  // display.print("Weekday: "); display.println(String(now.dayOfTheWeek()));
+  // display.print("mask: "); display.println(1 << now.dayOfTheWeek());
+  // display.print("cond: "); display.println((4 & 1 << now.dayOfTheWeek()) != 0);
   display.println(time);
   display.setCursor(0, 0);
   display.display(); // actually display all of the above
@@ -412,6 +374,7 @@ String getI2cDeviceList() {
 // This function is called when the sysInfo service was requested.
 void handleSysInfo() {
   String result;
+  String alarm = printAlarm(settings);
 
   result += "{\n";
   result += "  \"chipModel\": \"" + String(ESP.getChipModel()) + "\",\n";
@@ -435,6 +398,7 @@ void handleSysInfo() {
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
+  result += "    \"alarm\": " + alarm + ",\n";
   result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + "\n";
   result += "  }\n";
   // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
@@ -446,6 +410,63 @@ void handleSysInfo() {
 
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
+}
+
+
+void handleAlarm() {
+  if (server.method() == HTTP_GET) {
+    String result;
+    String alarm = printAlarm(settings);
+
+    result += "{\n";
+    result += "  \"alarm\": " + alarm + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else if (server.method() == HTTP_POST) {
+    JsonDocument json;
+    
+    if (deserializeJson(json, server.arg("plain"))) {
+      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    // int id = json["id"];
+    // String value = json["alarm"];
+
+    // // Initialize alarm[0][0]
+    // settings.alarm[0][0][0] = 0b00000100;
+    // settings.alarm[0][0][1] = 21;
+    // settings.alarm[0][0][2] = 00;
+    // settings.alarm[0][0][3] = 01;
+
+    // // Initialize alarm[0][1]
+    // settings.alarm[0][1][0] = 0b00000100;
+    // settings.alarm[0][1][1] = 23;
+    // settings.alarm[0][1][2] = 59;
+    // settings.alarm[0][1][3] = 01;
+
+    setupAlarms(server, settings.alarm);
+      
+    settings.updatedOn = rtc.now().unixtime();
+    EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+    EEPROM.commit();
+
+    String result;
+    String alarm = printAlarm(settings);
+
+    result += "{\n";
+    result += "  \"alarm\": " + alarm + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+    SERVER_RESPONSE_OK(result);
+  } else {
+    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+  }
+  return;
 }
 
 void handleValve() {
@@ -599,22 +620,42 @@ void loop() {
   // printRtcTime();
   vTaskDelay(500 / portTICK_PERIOD_MS);
   displayTime();
+
+  bool activateAlarm = isAlarmOn(settings, rtc.now());
+  if (activateAlarm && !IS_ALARM_ON) {
+    IS_ALARM_ON = true;
+    xTaskCreate(
+      pumpWater,          // Task function
+      "AlarmTask",        // Task name
+      2048,               // Stack size (bytes)
+      NULL,               // Task parameter
+      1,                  // Task priority
+      NULL                // Task handle
+    );
+  }
+}
+
+void pumpWater(void *parameter) {
+  handleTestFlow();
+  IS_ALARM_ON = false;
 }
 
 void handleTestFlow() {
-  TOTAL_MILLILITRES = 0;
   mcp.writeGPIOAB(0b1111111111111110);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  vTaskDelay(150 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111101111111110);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
+  TOTAL_MILLILITRES = 0;
+  pinMode(FLOW_METER_PIN, INPUT);
+  pinMode(FLOW_METER_PIN, INPUT_PULLUP);
+  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
+  (state to LOW state)*/
   attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   for(uint8_t i = 0; i < 20; i++) {
     displayFlow();
   }
   detachInterrupt(FLOW_METER_INTERRUPT);
   
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111111111111111);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  SERVER_RESPONSE_OK("{\"success\":true}");
 }
