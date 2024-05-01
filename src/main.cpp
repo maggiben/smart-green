@@ -51,17 +51,21 @@ void setup() {
 
   EEPROM.begin(EEPROM_SIZE);
 
+  // Setup i2c port extender
+  setupMcp();
+
+  printI2cDevices();
+
+  if(!initSDCard()) {
+    TRACE("SD not working\n");
+  };
+
   if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
     // Clear the buffer.
     display.clearDisplay();
     display.display();
   }
-
-  // Setup i2c port extender
-  setupMcp();
-
-  printI2cDevices();
 
   // EEPROM
   EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
@@ -95,6 +99,7 @@ void setup() {
   server.on("/api/test-flow", HTTP_GET, handleTestFlow);
   server.on("/api/alarm", HTTP_GET, handleAlarm);
   server.on("/api/alarm", HTTP_POST, handleAlarm);
+  server.on("/api/logs", HTTP_GET, handleLogs);
   // Start Server
   server.begin();
 
@@ -103,7 +108,6 @@ void setup() {
   beep(1);
 
   displayTime();
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   // xTaskCreate(
   //   taskFunction,       // Task function
@@ -295,6 +299,12 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
   } while (!isConnected() && i < max_tries);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+  // Initialize mDNS
+  while (!MDNS.begin(settings.hostname)) {
+    TRACE("Error setting up MDNS responder!\"");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
+  // Broadcast the hostname
   return isConnected();
 }
 
@@ -314,52 +324,10 @@ void syncRTC() {
   TRACE("RTC synced with NTP time\n");
 }
 
-void get2cDevices(byte* devices) {
-  byte error, address;
-  int nDevices;
-
-  memset(devices, 0, sizeof(byte) * MAX_I2C_DEVICES);
- 
-  TRACE("Scanning...\n");
- 
-  nDevices = 0;
-  for(address = 1; address < MAX_I2C_DEVICES; address++) {
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmisstion to see if
-    // a device did acknowledge to the address.
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
- 
-    if (error == 0)
-    {
-      TRACE("I2C device found at address 0x");
-      devices[nDevices] = address;
-      if (devices[nDevices] < 16)
-        TRACE("0");
-      PRINT(devices[nDevices], HEX);
-      TRACE("  !\n");
-      nDevices++;
-    }
-    else if (error == 4)
-    {
-      TRACE("Unknown error at address 0x");
-      if (address < 16)
-        TRACE("0");
-      PRINTLN(address, HEX);
-    }    
-  }
-  if (nDevices == 0)
-    TRACE("No I2C devices found\n");
-  else
-    TRACE("Done\n");
- 
-  return;
-}
-
 String getI2cDeviceList() {
   String result = "[";
   byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
-  get2cDevices(i2cDevices);
+  printI2cDevices(i2cDevices);
   for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
     result += String(i2cDevices[i]);
     if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
@@ -392,6 +360,11 @@ void handleSysInfo() {
   result += "  \"watering\": {\n";
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
+  result += "  },\n";
+  result += "  \"logs\": {\n";
+  result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
+  result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
+  result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + "\n";
   result += "  },\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
@@ -428,7 +401,7 @@ void handleAlarm() {
     JsonDocument json;
     
     if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
       return;
     }
 
@@ -462,9 +435,8 @@ void handleAlarm() {
 
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
-    SERVER_RESPONSE_OK(result);
   } else {
-    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
   }
   return;
 }
@@ -473,14 +445,14 @@ void handleValve() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
       // handle error here
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid value");
       return;
     }
     
     JsonDocument json;
     
     if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
       return;
     }
 
@@ -496,29 +468,86 @@ void handleValve() {
       SERVER_RESPONSE_SUCCESS();
       return;
     } else {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid value");
       return;
     }
   } else {
-    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
     return;
   }
   return;
 }
 
+void handleLogs() {
+  if (server.method() == HTTP_GET) {
+    String result;
+    String contents = "";
 
+    if(!initSDCard()) {
+      SERVER_RESPONSE_ERROR(500, "SD not working");
+    };
+    
+    File file = SD.open("/HelloWorld.txt");
+      
+    if (!file) {
+      SERVER_RESPONSE_ERROR(404, "Failed to open file");
+      return;
+    }
+    
+    while (file.available()) {
+      contents += file.readString();
+    }
+    
+    file.close();
+
+    result += "{\n";
+    result += "  \"files\": " + listRootDirectory() + ",\n";
+    result += "  \"content\":  \"" + contents + "\"\n";
+    result += "}";
+
+    saveLog(rtc.now(), contents, 1234, 1000, 3);
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else if (server.method() == HTTP_POST) {
+    // JsonDocument json;
+    
+    // if (deserializeJson(json, server.arg("plain"))) {
+    //   SERVER_RESPONSE_ERROR(400, "Invalid JSON");
+    //   return;
+    // }
+
+    // setupAlarms(server, settings.alarm);
+      
+    // settings.updatedOn = rtc.now().unixtime();
+    // EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+    // EEPROM.commit();
+
+    String result;
+    // String alarm = printAlarm(settings);
+
+    result += "{\n";
+    result += "  \"files\": " + listRootDirectory() + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else {
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
+  }
+  return;
+}
 void handlePump() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
       // handle error here
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid value");
       return;
     }
     
     JsonDocument json;
     
     if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
       return;
     }
 
@@ -540,11 +569,11 @@ void handlePump() {
     //   SERVER_RESPONSE_SUCCESS();
     //   return;
     // } else {
-    //   SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+    //   SERVER_RESPONSE_ERROR(400, "Invalid value");
     //   return;
     // }
   } else {
-    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
     return;
   }
   return;
@@ -553,13 +582,13 @@ void handleSaveSettings() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
       // handle error here
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid value\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid value");
     }
     JsonDocument json;
     DeserializationError error = deserializeJson(json, server.arg("plain"));
     
     if (error) {
-      SERVER_RESPONSE_ERROR(400, "{\"error\":\"Invalid JSON\"}");
+      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
       return;
     }
 
@@ -575,7 +604,7 @@ void handleSaveSettings() {
     EEPROM.commit();
     SERVER_RESPONSE_OK("{\"success\":true}");
   } else {
-    SERVER_RESPONSE_ERROR(405, "{\"error\":\"Method Not Allowed\"}");
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
   }
 }
 
@@ -592,32 +621,11 @@ void errorMsg(String error, bool restart) {
 }
 
 void loop() {
-  // static unsigned long oldTime = millis();
-  // Only process counters once per second 
-  // put your main code here, to run repeatedly:
-  // printI2cDevices();
-  // displayTime();
-  // for (int i = 0; i < 16; i++) {
-  //   turnOnPin(i);
-  //   vTaskDelay(2000 / portTICK_PERIOD_MS);
-  //   displayTime();
-  // }
-  // vTaskDelay(500 / portTICK_PERIOD_MS);
   server.handleClient();
   // time_t now = time(nullptr);
   // struct tm *timeinfo;
   // timeinfo = localtime(&now);
-
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-  // vTaskDelay(1000 / portTICK_PERIOD_MS);
-  // if((millis() - oldTime) > 5000) { 
-  //   displayTime();
-  //   oldTime = millis();
-  //   vTaskDelay(1000 / portTICK_PERIOD_MS);
-  // }
-  // displayFlow();
-  // printLocalTime();
-  // printRtcTime();
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   bool activateAlarm = isAlarmOn(settings, rtc.now());
@@ -640,6 +648,7 @@ void loop() {
 void pumpWater(void *parameter) {
   handleTestFlow();
   while(isAlarmOn(settings, rtc.now())) {
+    displayTime();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
   IS_ALARM_ON = false;

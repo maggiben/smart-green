@@ -36,6 +36,7 @@
 #pragma once
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <FS.h>
@@ -87,7 +88,8 @@ WebServer server(80);
 #ifndef server
   #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
   #define SERVER_RESPONSE_SUCCESS()  SERVER_RESPONSE_OK("{\"success\":true}")
-  #define SERVER_RESPONSE_ERROR(code, ...)  server.send(code, "application/jsont; charset=utf-8", __VA_ARGS__)
+  // #define SERVER_RESPONSE_ERROR(code, ...)  server.send(code, "application/jsont; charset=utf-8", __VA_ARGS__)
+  #define SERVER_RESPONSE_ERROR(code, error)  server.send(code, "application/json; charset=utf-8", String("{\"error\":\"") + error + "\"}")
 #endif
 
 #ifndef Task0
@@ -128,7 +130,6 @@ void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);
 void printLocalTime();
-void printI2cDevices();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
 
@@ -142,5 +143,6 @@ void handleValve();
 void handleSaveSettings();
 void handlePump();
 void handleAlarm();
+void handleLogs();
 void displayTime();
 void pumpWater(void *parameter);

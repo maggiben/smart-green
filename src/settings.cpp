@@ -11,7 +11,7 @@ void readSettings(Settings* settings) {
   EEPROM.get(addr, settings);
 }
 
-void printI2cDevices() {
+void printI2cDevices(byte* devices) {
   byte error, address;
   int nDevices;
  
@@ -29,11 +29,13 @@ void printI2cDevices() {
     if (error == 0)
     {
       TRACE("I2C device found at address 0x");
+      if (devices != NULL) {
+        devices[nDevices] = address;
+      }
       if (address<16)
         TRACE("0");
       PRINT(address, HEX);
-      PRINTLN("  !");
- 
+      TRACE("  !\n");
       nDevices++;
     }
     else if (error==4)
@@ -77,6 +79,80 @@ String printAlarm(Settings settings) {
   result += "]";
 
   return result;
+}
+
+bool initSDCard() {
+  // pinMode(SS, OUTPUT);
+  // digitalWrite(SS, HIGH); // Set SS pin high initially
+  pinMode(BUZZER_PIN, OUTPUT);
+  if(!SD.begin(SS)) {
+    TRACE("Card Mount Failed\n");
+    return false;
+  }
+  uint8_t cardType = SD.cardType();
+
+  if(cardType == CARD_NONE) {
+    TRACE("No SD card attached\n");
+    return false;
+  }
+
+  TRACE("SD Card Type: ");
+  if(cardType == CARD_MMC) {
+    TRACE("MMC\n");
+  } else if(cardType == CARD_SD) {
+    TRACE("SDSC\n");
+  } else if(cardType == CARD_SDHC) {
+    TRACE("SDHC\n");
+  } else {
+    TRACE("UNKNOW\n");
+    return false;
+  }
+  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  uint64_t freeSize = cardSize - (SD.usedBytes() / (1024 * 1024));
+  TRACE("SD Card Size: %lluMB\n", cardSize);
+  TRACE("SD Free Size: %lluMB\n", freeSize);
+  return true;
+}
+
+String listRootDirectory() {
+  String fileList = "[";
+
+  File root = SD.open("/");
+  if (root) {
+    while (true) {
+      File entry = root.openNextFile();
+      if (!entry) {
+        break;
+      }
+      if (fileList != "[") {
+        fileList += ",";
+      }
+      fileList += "\"" + String(entry.name()) + "\"";
+      entry.close();
+    }
+    root.close();
+  } else {
+    TRACE("Failed to open directory\n");
+  }
+
+  fileList += "]";
+  return fileList;
+}
+
+bool saveLog(DateTime now, String name, int id, int milliliters, int duration) {
+  String fileName = "/log-" + String(now.unixtime()) + ".csv";
+  File file = SD.open(fileName, FILE_WRITE);
+  
+  if (!file) {
+    TRACE("Failed to open file for writing\n");
+    return false;
+  }
+  
+  file.printf("%s,%s,%s,%s\n", "id", "name", "milliliters", "duration");
+  file.printf("%d,%s,%d,%d\n", id, name.c_str(), milliliters, duration);
+  
+  file.close();
+  return true;
 }
 
 bool isAlarmOn(Settings settings, DateTime now) {
