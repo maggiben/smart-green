@@ -109,7 +109,6 @@ bool isAlarmOn(Settings settings, DateTime now) {
     }
   }
   // No active alarm found
-  IS_ALARM_OFF = true;
   return false;
 }
 
