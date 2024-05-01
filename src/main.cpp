@@ -618,39 +618,46 @@ void loop() {
   // displayFlow();
   // printLocalTime();
   // printRtcTime();
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  displayTime();
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   bool activateAlarm = isAlarmOn(settings, rtc.now());
+
   if (activateAlarm && !IS_ALARM_ON) {
     IS_ALARM_ON = true;
     xTaskCreate(
       pumpWater,          // Task function
       "AlarmTask",        // Task name
-      2048,               // Stack size (bytes)
+      8192,               // Stack size (bytes)
       NULL,               // Task parameter
       1,                  // Task priority
       NULL                // Task handle
     );
+  } else if (!activateAlarm || !IS_ALARM_ON) {
+    displayTime();
   }
 }
 
 void pumpWater(void *parameter) {
   handleTestFlow();
+  while(isAlarmOn(settings, rtc.now())) {
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
   IS_ALARM_ON = false;
+  vTaskDelete(NULL);
 }
 
 void handleTestFlow() {
   mcp.writeGPIOAB(0b1111111111111110);
-  vTaskDelay(150 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111101111111110);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-  TOTAL_MILLILITRES = 0;
   pinMode(FLOW_METER_PIN, INPUT);
   pinMode(FLOW_METER_PIN, INPUT_PULLUP);
   /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
   (state to LOW state)*/
   attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+  TOTAL_MILLILITRES = 0;
   for(uint8_t i = 0; i < 20; i++) {
     displayFlow();
   }

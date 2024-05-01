@@ -98,7 +98,7 @@ WebServer server(80);
 #endif
 
 #ifndef IS_ALARM_ON
-  bool IS_ALARM_ON = false;
+  volatile bool IS_ALARM_ON = false;
 #endif
 
 #ifndef ENABLE_FLOW

@@ -99,7 +99,7 @@ bool isAlarmOn(Settings settings, DateTime now) {
       // Check if the alarm matches the current time
       if ((alarmWeekday & currentDayMask) != 0) {
         if(now.hour() >= startAlarmHour && now.hour() <= endAlarmHour) {
-          if(now.minute() >= startAlarmMinute && now.minute() <= endAlarmMinute) { 
+          if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
             // Alarm is active
             return true;
             break;
