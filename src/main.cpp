@@ -479,14 +479,18 @@ void handleLogs() {
     
     file.close();
 
+    DateTime now = rtc.now();
+
     result += "{\n";
     result += "  \"files\": " + listRootDirectory() + ",\n";
+    result += "  \"timestamp\": " + String(now.unixtime(), DEC) + ",\n";
     result += "  \"content\":  \"" + contents + "\"\n";
     result += "}";
 
-    saveLog(rtc.now(), contents, 1234, 1000, 3);
+    saveLog(now, contents, 1234, 1000, 3);
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
+    return;
   } else if (server.method() == HTTP_POST) {
     // JsonDocument json;
     
@@ -510,8 +514,10 @@ void handleLogs() {
 
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
+    return;
   } else {
     SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
+    return;
   }
   return;
 }
