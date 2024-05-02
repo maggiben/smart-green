@@ -1,14 +1,12 @@
 #include "settings.h"
 
 void saveSettings(Settings* settings) {
-  uint16_t addr = 0;
-  EEPROM.put(addr, settings);
+  EEPROM.put(SETTINGS_ADDRESS, settings);
   EEPROM.commit();
 }
 
 void readSettings(Settings* settings) {
-  uint16_t addr = 0;
-  EEPROM.get(addr, settings);
+  EEPROM.get(SETTINGS_ADDRESS, settings);
 }
 
 void printI2cDevices(byte* devices) {
@@ -52,7 +50,7 @@ void printI2cDevices(byte* devices) {
     TRACE("done\n");
 }
 
-String printAlarm(Settings settings) {
+String getAlarms(Settings settings) {
   String result = "[";
 
   for (int i = 0; i < SETTINGS_MAX_ALARMS; i++) {
@@ -236,6 +234,48 @@ void setupAlarms(WebServer &server, uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_
       alarm[alarmIndex][i][2] = minute;
       alarm[alarmIndex][i][3] = active;
     }
+  }
+}
+
+void setupPlants(WebServer &server, uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE]) {
+  JsonDocument json;
+  DeserializationError error = deserializeJson(json, server.arg("plain"));
+
+  if (error) {
+    TRACE("deserializeJson() failed:\n");
+    TRACE(error.c_str());
+    return;
+  }
+
+  JsonArray alarmArray = json["plants"].as<JsonArray>();
+  int numPlant = alarmArray.size();
+  if (numPlant > SETTINGS_MAX_PLANTS) {
+    TRACE("Exceeded maximum number of plants\n");
+    return;
+  }
+
+  for (int plantIndex = 0; plantIndex < numPlant; plantIndex++) {
+    JsonArray plantData = alarmArray[plantIndex].as<JsonArray>();
+    if (plantData.size() != SETTINGS_PLANTS_STORE) {
+      TRACE("Invalid alarm format\n");
+      return;
+    }
+  
+    /* "id", "pot size" and "status" */
+    uint8_t id = plantData[0];
+    uint8_t size = plantData[1];
+    uint8_t status = plantData[2];
+
+    // Validate hour, minute, and active values
+    if (id < 0 || size < 0) {
+      TRACE("Invalid alarm settings\n");
+      return;
+    }
+
+    // Store the plant settings
+    plants[plantIndex][0] = id;
+    plants[plantIndex][1] = size;
+    plants[plantIndex][2] = status;
   }
 }
 

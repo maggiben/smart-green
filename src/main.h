@@ -62,11 +62,15 @@ Settings settings = {
   // Assuming updatedOn is 0
   0,
   // Assuming reboot on wifi failed is false
-  false,
-  // Assuming liquid flow rate is 0
-  0.0,
-  // Initializing alarms to 0
-  {{{0}}}
+  REBOOT_ON_WIFIFAIL,
+  // Flow calibration value
+  FLOW_CALIBRATION_FACTOR,
+  // Initializing alarms all to 0 (disabled)
+  {{{0}}},
+  // Max Plants
+  SETTINGS_MAX_PLANTS,
+  // Plant settings
+  {{0}}
 };
 
 // i2c Clock
@@ -107,6 +111,7 @@ WebServer server(80);
   volatile byte FLOW_METER_PULSE_COUNT                  = 0;
   volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
   unsigned long OLD_INT_TIME                            = 0;
+  unsigned long START_INT_TIME                          = 0;
   float FLOW_RATE                                       = 0.0;
   unsigned int FLOW_MILLILITRES                         = 0;
   unsigned long TOTAL_MILLILITRES                       = 0;
@@ -144,5 +149,7 @@ void handleSaveSettings();
 void handlePump();
 void handleAlarm();
 void handleLogs();
+void handleRoot();
 void displayTime();
 void pumpWater(void *parameter);
+void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);

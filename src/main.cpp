@@ -91,6 +91,7 @@ void setup() {
   // Enable CORS header in webserver results
   server.enableCORS(true);
   // REST Endpoint (Only if Connected)
+  server.on("/", handleRoot);
   server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
   server.on("/api/settings", HTTP_POST, handleSaveSettings);
   // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
@@ -186,7 +187,7 @@ void displayFlow() {
     // display.print((millis() - OLD_INT_TIME), DEC);
     // display.println("");
 
-    display.printf("Secs: %d\n", millis() - OLD_INT_TIME);
+    display.printf("Secs: %d\n", (millis() - START_INT_TIME) / 1000);
     
     display.setCursor(0, 0);
     display.display(); // actually display all of the above
@@ -342,7 +343,6 @@ String getI2cDeviceList() {
 // This function is called when the sysInfo service was requested.
 void handleSysInfo() {
   String result;
-  String alarm = printAlarm(settings);
 
   result += "{\n";
   result += "  \"chipModel\": \"" + String(ESP.getChipModel()) + "\",\n";
@@ -371,28 +371,45 @@ void handleSysInfo() {
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
-  result += "    \"alarm\": " + alarm + ",\n";
+  result += "    \"alarm\": " + getAlarms(settings) + ",\n";
   result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + "\n";
   result += "  }\n";
-  // result += "  \"fsTotalBytes\": " + String(LittleFS.totalBytes()) + ",\n";
-  // result += "  \"fsUsedBytes\": " + String(LittleFS.usedBytes()) + ",\n";
   result += "}";
 
 
+  TOTAL_MILLILITRES = 0;
   FLOW_METER_TOTAL_PULSE_COUNT = 0;
 
+  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
 }
 
 
+void handleRoot() {
+  // Set CORS headers
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Max-Age", "10000");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  
+  // Send the HTML page
+  String html = "<!DOCTYPE html><html><body>";
+  html += "<h1>ESP Web Server Example</h1>";
+  html += "<button onclick=\"fetchData()\">Fetch Data</button>";
+  html += "<pre id=\"data\"></pre>";
+  html += "<script>function fetchData() { fetch('http://indoor_chico_01.local/api/sysinfo').then(response => response.json()).then(data => document.getElementById('data').innerText = JSON.stringify(data)); }</script>";
+  html += "</body></html>";
+  
+  server.send(200, "text/html", html);
+}
+
 void handleAlarm() {
   if (server.method() == HTTP_GET) {
     String result;
-    String alarm = printAlarm(settings);
 
     result += "{\n";
-    result += "  \"alarm\": " + alarm + "\n";
+    result += "  \"alarm\": " + getAlarms(settings) + "\n";
     result += "}";
 
     server.sendHeader("Cache-Control", "no-cache");
@@ -405,21 +422,6 @@ void handleAlarm() {
       return;
     }
 
-    // int id = json["id"];
-    // String value = json["alarm"];
-
-    // // Initialize alarm[0][0]
-    // settings.alarm[0][0][0] = 0b00000100;
-    // settings.alarm[0][0][1] = 21;
-    // settings.alarm[0][0][2] = 00;
-    // settings.alarm[0][0][3] = 01;
-
-    // // Initialize alarm[0][1]
-    // settings.alarm[0][1][0] = 0b00000100;
-    // settings.alarm[0][1][1] = 23;
-    // settings.alarm[0][1][2] = 59;
-    // settings.alarm[0][1][3] = 01;
-
     setupAlarms(server, settings.alarm);
       
     settings.updatedOn = rtc.now().unixtime();
@@ -427,10 +429,9 @@ void handleAlarm() {
     EEPROM.commit();
 
     String result;
-    String alarm = printAlarm(settings);
 
     result += "{\n";
-    result += "  \"alarm\": " + alarm + "\n";
+    result += "  \"alarm\": " + getAlarms(settings) + "\n";
     result += "}";
 
     server.sendHeader("Cache-Control", "no-cache");
@@ -479,6 +480,11 @@ void handleValve() {
 }
 
 void handleLogs() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Max-Age", "10000");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+
   if (server.method() == HTTP_GET) {
     String result;
     String contents = "";
@@ -536,6 +542,7 @@ void handleLogs() {
   }
   return;
 }
+
 void handlePump() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
@@ -578,6 +585,7 @@ void handlePump() {
   }
   return;
 }
+
 void handleSaveSettings() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
@@ -655,7 +663,45 @@ void pumpWater(void *parameter) {
   vTaskDelete(NULL);
 }
 
+/*
+ * unsigned int duration in seconds
+ */
+void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
+  mcp.writeGPIOAB(0b1111111111111111);
+  vTaskDelay(10 / portTICK_PERIOD_MS);
+  mcp.digitalWrite(valve, LOW);
+  // Wait time to settle current and start the pump
+  vTaskDelay(150 / portTICK_PERIOD_MS);
+  mcp.digitalWrite(PUMP1_PIN, LOW);
+
+  pinMode(FLOW_METER_PIN, INPUT);
+  pinMode(FLOW_METER_PIN, INPUT_PULLUP);
+  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
+  (state to LOW state)*/
+  TOTAL_MILLILITRES = 0;
+  START_INT_TIME = millis();
+  attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+  FLOW_METER_PULSE_COUNT = 0;
+  for(uint8_t i = 0; i < duration; i++) {
+    displayFlow();
+    if (TOTAL_MILLILITRES > millilitres) {
+      break;
+    }
+  }
+  // TOTAL_MILLILITRES = 0;
+  FLOW_METER_PULSE_COUNT = 0;
+  detachInterrupt(FLOW_METER_INTERRUPT);
+  // Turn all outputs off
+  mcp.writeGPIOAB(0b1111111111111111);
+}
+
 void handleTestFlow() {
+  waterPlant(0, 20, 250);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+  waterPlant(1, 20, 250);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+  waterPlant(3, 20, 250);
+  return;
   mcp.writeGPIOAB(0b1111111111111110);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.writeGPIOAB(0b1111101111111110);
