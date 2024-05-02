@@ -111,6 +111,9 @@ void setup() {
 
   displayTime();
 
+  // Initialize OTA
+  ArduinoOTA.begin();
+
   // xTaskCreate(
   //   taskFunction,       // Task function
   //   "AlarmTask",        // Task name
@@ -582,6 +585,9 @@ void loop() {
   // timeinfo = localtime(&now);
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+  // Handle OTA updates
+  ArduinoOTA.handle();
 
   bool activateAlarm = isAlarmOn(settings, rtc.now());
 

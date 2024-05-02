@@ -46,6 +46,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MCP23X17.h>
+#include <ArduinoOTA.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include "constants.h"
