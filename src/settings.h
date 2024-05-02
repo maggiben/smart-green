@@ -16,6 +16,12 @@
 #define SETTINGS_PLANTS_STORE             3       /* Plant store array: "id", "pot size" and "status" */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
+struct Alarm {
+  uint8_t weekday;
+  uint8_t hour;
+  uint8_t minute;
+  uint8_t status;
+};
 
 struct Settings {
   // char * name;
@@ -25,7 +31,7 @@ struct Settings {
   uint32_t updatedOn;
   boolean rebootOnWifiFail;
   uint8_t flowCalibrationFactor;
-  uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES][SETTINGS_ALARM_DATA_STORE];
+  Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES];
   /* In case you need to set the values statically use these: */
   // uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES][SETTINGS_ALARM_DATA_STORE] = {
   //  {
@@ -43,7 +49,7 @@ String getI2cDeviceList();
 String getAlarms(Settings settings);
 bool isAlarmOn(Settings settings, DateTime now);
 void beep(uint8_t times);
-void setupAlarms(WebServer &server, uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES][SETTINGS_ALARM_DATA_STORE]);
+bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);
 bool getAlarmRunningState();
 void setAlarmRunningState(bool state);
 void toggleAlarmRunningState();

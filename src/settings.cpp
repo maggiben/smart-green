@@ -56,14 +56,20 @@ String getAlarms(Settings settings) {
   for (int i = 0; i < SETTINGS_MAX_ALARMS; i++) {
     result += "[";
     for (int j = 0; j < SETTINGS_ALARM_STATES; j++) {
-      result += "[";
-      for (int k = 0; k < SETTINGS_ALARM_DATA_STORE; k++) {
-        result += String(settings.alarm[i][j][k]);
-        if (k < SETTINGS_ALARM_DATA_STORE - 1) {
-          result += ",";
-        }
-      }
-      result += "]";
+      result += "{";
+      
+        result += "  \"weekday\": " + String(settings.alarm[i][j].weekday) + ",\n";
+        result += "  \"hour\": " + String(settings.alarm[i][j].hour) + ",\n";
+        result += "  \"minute\": " + String(settings.alarm[i][j].minute) + ",\n";
+        result += "  \"status\": " + String(settings.alarm[i][j].status) + "\n";
+      // for (int k = 0; k < SETTINGS_ALARM_DATA_STORE; k++) {
+      //   result += String(settings.alarm[i][j][k]);
+      //   if (k < SETTINGS_ALARM_DATA_STORE - 1) {
+      //     result += ",";
+      //   }
+      // }
+
+      result += "}";
       if (j < SETTINGS_ALARM_STATES - 1) {
         result += ",";
       }
@@ -159,16 +165,15 @@ bool isAlarmOn(Settings settings, DateTime now) {
   // Iterate through all alarms
   for (int i = 0; i < SETTINGS_MAX_ALARMS; i++) {
     // Check if the alarm is active (alarm[alarmNumber][0] == 1)
-    if (settings.alarm[i][0][3] == 1 && settings.alarm[i][1][3] == 1) {
+    if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
       // Extract alarm time components
-      uint8_t alarmWeekday = settings.alarm[i][0][0];
-      
-      uint8_t startAlarmHour = settings.alarm[i][0][1];
-      uint8_t startAlarmMinute = settings.alarm[i][0][2];
-      uint8_t active = settings.alarm[i][0][3];
+      uint8_t alarmWeekday = settings.alarm[i][0].weekday;
+      uint8_t startAlarmHour = settings.alarm[i][0].hour;
+      uint8_t startAlarmMinute = settings.alarm[i][0].minute;
+      uint8_t status = settings.alarm[i][0].status;
 
-      uint8_t endAlarmHour = settings.alarm[i][1][1];
-      uint8_t endAlarmMinute = settings.alarm[i][1][2];
+      uint8_t endAlarmHour = settings.alarm[i][1].hour;
+      uint8_t endAlarmMinute = settings.alarm[i][1].minute;
       // uint8_t alarmSecond = settings.alarm[i][1][3];
 
       // Check if the alarm matches the current time
@@ -176,7 +181,7 @@ bool isAlarmOn(Settings settings, DateTime now) {
         if(now.hour() >= startAlarmHour && now.hour() <= endAlarmHour) {
           if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
             // Alarm is active
-            if (active) {
+            if (status == 1) {
               return true;
               break;
             }
@@ -189,55 +194,82 @@ bool isAlarmOn(Settings settings, DateTime now) {
   return false;
 }
 
-void setupAlarms(WebServer &server, uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES][SETTINGS_ALARM_DATA_STORE]) {
+bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonDocument json;
   DeserializationError error = deserializeJson(json, server.arg("plain"));
 
   if (error) {
     TRACE("deserializeJson() failed:\n");
     TRACE(error.c_str());
-    return;
+    return false;
   }
 
   JsonArray alarmArray = json["alarm"].as<JsonArray>();
   int numAlarms = alarmArray.size();
   if (numAlarms > SETTINGS_MAX_ALARMS) {
     TRACE("Exceeded maximum number of alarms\n");
-    return;
+    return false;
   }
 
   for (int alarmIndex = 0; alarmIndex < numAlarms; alarmIndex++) {
     JsonArray alarmData = alarmArray[alarmIndex].as<JsonArray>();
     if (alarmData.size() != SETTINGS_ALARM_STATES) {
       TRACE("Invalid alarm format\n");
-      return;
+      return false;
     }
 
     for (int i = 0; i < SETTINGS_ALARM_STATES; i++) {
-      JsonArray alarmSetting = alarmData[i].as<JsonArray>();
-      if (alarmSetting.size() != SETTINGS_ALARM_DATA_STORE) {
+      
+      JsonObject alarmSetting = alarmData[i].as<JsonObject>();
+
+      if (!alarmSetting.containsKey("weekday") || !alarmSetting.containsKey("hour") || !alarmSetting.containsKey("minute") || !alarmSetting.containsKey("status")) {
         TRACE("Invalid alarm format\n");
-        return;
+        return false;
       }
 
-      uint8_t weekday = alarmSetting[0];
-      uint8_t hour = alarmSetting[1];
-      uint8_t minute = alarmSetting[2];
-      uint8_t active = alarmSetting[3];
+      uint8_t weekday = alarmSetting["weekday"];
+      uint8_t hour = alarmSetting["hour"];
+      uint8_t minute = alarmSetting["minute"];
+      uint8_t status = alarmSetting["status"];
 
       // Validate hour, minute, and active values
-      if (hour > 23 || minute > 59 || active > 1) {
+      if (hour > 23 || minute > 59) {
         TRACE("Invalid alarm settings\n");
-        return;
+        return false;
       }
 
       // Store the alarm settings
-      alarm[alarmIndex][i][0] = weekday;
-      alarm[alarmIndex][i][1] = hour;
-      alarm[alarmIndex][i][2] = minute;
-      alarm[alarmIndex][i][3] = active;
+      alarm[alarmIndex][i].weekday = weekday;
+      alarm[alarmIndex][i].hour = hour;
+      alarm[alarmIndex][i].minute = minute;
+      alarm[alarmIndex][i].status = status;
+
+      // JsonArray alarmSetting = alarmData[i].as<JsonArray>();
+      // if (alarmSetting.size() != SETTINGS_ALARM_DATA_STORE) {
+      //   TRACE("Invalid alarm format\n");
+      //   return false;
+      // }
+
+      // uint8_t weekday = alarmSetting[0];
+      // uint8_t hour = alarmSetting[1];
+      // uint8_t minute = alarmSetting[2];
+      // uint8_t status = alarmSetting[3];
+
+      // // Validate hour, minute, and active values
+      // if (hour > 23 || minute > 59 || status > 1) {
+      //   TRACE("Invalid alarm settings\n");
+      //   return false;
+      // }
+
+      // return false;
+      // // Store the alarm settings
+      // alarm[alarmIndex][i].weekday = weekday;
+      // alarm[alarmIndex][i].hour = hour;
+      // alarm[alarmIndex][i].minute = minute;
+      // alarm[alarmIndex][i].status = status;
     }
   }
+  return true;
 }
 
 void setupPlants(WebServer &server, uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE]) {

@@ -25,13 +25,13 @@ void setup() {
   // Check if EEPROM is ready
   Wire.beginTransmission(EEPROM_ADDRESS);
   if (Wire.endTransmission() != 0) {
-    TRACE("EEPROM not found or not ready");
+    TRACE("EEPROM not found or not ready\n");
     beep(2);
     // ESP.restart();
   }
 
   if (!rtc.begin()) {
-    TRACE("Couldn't find RTC");
+    TRACE("Couldn't find RTC\n");
     // Serial.flush();
     beep(2);
     // abort();
@@ -81,6 +81,7 @@ void setup() {
 
     // // Set up the OTA end callback
     ArduinoOTA.onEnd([]() {
+      beep(4);
       TRACE("OTA update successful, rebooting...\n");
       vTaskDelay(500 / portTICK_PERIOD_MS);
       ESP.restart();
@@ -255,7 +256,8 @@ void displayTime() {
   if (DISPLAY_INFO_DATA == 0) {
     display.print("Alarm: "); display.println(String(isAlarmOn(settings, rtc.now())));
   } else if (DISPLAY_INFO_DATA == 1) {
-    display.print("Week: "); display.println( String((8 & (1 << rtc.now().dayOfTheWeek()))) && (rtc.now().minute() > settings.alarm[0][0][2])    );
+    // display.print("Week: "); display.println(String((8 & (1 << rtc.now().dayOfTheWeek()))));
+    display.print("Week: "); display.println(String(1 << rtc.now().dayOfTheWeek()));
   }
   // display.print("Weekday: "); display.println(String(now.dayOfTheWeek()));
   // display.print("mask: "); display.println(1 << now.dayOfTheWeek());
@@ -395,7 +397,10 @@ void handleAlarm() {
       return;
     }
 
-    setupAlarms(server, settings.alarm);
+    if(!setupAlarms(server, settings.alarm)) {
+      SERVER_RESPONSE_ERROR(500, "Serialization error");
+      return;
+    };
       
     settings.updatedOn = rtc.now().unixtime();
     EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
@@ -515,6 +520,16 @@ void handleLogs() {
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
     return;
+  } else if (server.method() == HTTP_DELETE) {
+    String result;
+    // String alarm = printAlarm(settings);
+
+    result += "{\n";
+    result += "  \"files\": " + listRootDirectory() + "\n";
+    result += "}";
+  
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
   } else {
     SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
     return;
@@ -637,11 +652,12 @@ void pumpWater(void *parameter) {
  * unsigned int duration in seconds
  */
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
+  // Turn off all outputs
   mcp.writeGPIOAB(0b1111111111111111);
   vTaskDelay(10 / portTICK_PERIOD_MS);
   mcp.digitalWrite(valve, LOW);
   // Wait time to settle current and start the pump
-  vTaskDelay(150 / portTICK_PERIOD_MS);
+  vTaskDelay(250 / portTICK_PERIOD_MS);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
   pinMode(FLOW_METER_PIN, INPUT);
@@ -670,7 +686,10 @@ void handleTestFlow() {
   vTaskDelay(500 / portTICK_PERIOD_MS);
   waterPlant(1, 20, 250);
   vTaskDelay(500 / portTICK_PERIOD_MS);
+  waterPlant(2, 20, 250);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   waterPlant(3, 20, 250);
+  SERVER_RESPONSE_OK("{\"success\":true}");
   return;
   mcp.writeGPIOAB(0b1111111111111110);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
