@@ -70,7 +70,9 @@ Settings settings = {
   // Max Plants
   SETTINGS_MAX_PLANTS,
   // Plant settings
-  {{0}}
+  {{0}},
+  // Attemp to use Graphical Display
+  USE_DISPLAY
 };
 
 // i2c Clock

@@ -60,9 +60,12 @@ void setup() {
     TRACE("SD not working\n");
   };
 
-  if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {; // Address 0x3C for 128x32
+  if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
-    // Clear the buffer.
+    settings.useDisplay = false;
+  } else {
+    // Display ok clear the buffer.
+    settings.useDisplay = USE_DISPLAY;
     display.clearDisplay();
     display.display();
   }
@@ -264,22 +267,6 @@ void displayTime() {
   free(time);
 }
 
-void turnOnPin(int pinNumber) {
-  if (pinNumber >= 0 && pinNumber < I2C_MCP_PINCOUNT) {
-    for (int i = 0; i < 16; i++) {
-      if (i == pinNumber) {
-        mcp.digitalWrite(i, LOW); // Turn on the specified pin
-      } else {
-        mcp.digitalWrite(i, HIGH); // Turn off all other pins
-      }
-    }
-  }
-}
-
-bool isConnected() {
-  return (WiFi.status() == WL_CONNECTED);
-}
-
 bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pause) {
   int i = 0;
   // allow to address the device by the given name e.g. http://webserver
@@ -323,21 +310,6 @@ void syncRTC() {
   EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
   EEPROM.commit();
   TRACE("RTC synced with NTP time\n");
-}
-
-String getI2cDeviceList() {
-  String result = "[";
-  byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
-  printI2cDevices(i2cDevices);
-  for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
-    result += String(i2cDevices[i]);
-    if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
-      result += ", ";
-    }
-  }
-  result += "]";
-  free(i2cDevices);
-  return result;
 }
 
 // This function is called when the sysInfo service was requested.
@@ -461,7 +433,7 @@ void handleValve() {
     String value = json["value"];
 
     if (value == "on" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
-      turnOnPin(pin);
+      turnOnPin(mcp, pin);
       SERVER_RESPONSE_SUCCESS();
       return;
     } else if (value == "off" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {

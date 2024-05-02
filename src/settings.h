@@ -2,6 +2,7 @@
 #include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
 #include <EEPROM.h>
 #include <SD.h>
+#include <Adafruit_MCP23X17.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include "constants.h"
@@ -34,9 +35,11 @@ struct Settings {
   // };
   uint8_t maxPlants;
   uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE];
+  bool useDisplay;
 };
 
 void printI2cDevices(byte* devices = NULL);
+String getI2cDeviceList();
 String getAlarms(Settings settings);
 bool isAlarmOn(Settings settings, DateTime now);
 void beep(uint8_t times);
@@ -47,3 +50,5 @@ void toggleAlarmRunningState();
 String listRootDirectory();
 bool initSDCard();
 bool saveLog(DateTime now, String name, int id, int milliliters, int duration);
+bool isConnected();
+void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);

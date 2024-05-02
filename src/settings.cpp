@@ -289,3 +289,36 @@ void beep(uint8_t times) {
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
+
+
+String getI2cDeviceList() {
+  String result = "[";
+  byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
+  printI2cDevices(i2cDevices);
+  for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
+    result += String(i2cDevices[i]);
+    if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
+      result += ", ";
+    }
+  }
+  result += "]";
+  free(i2cDevices);
+  return result;
+}
+
+
+bool isConnected() {
+  return (WiFi.status() == WL_CONNECTED);
+}
+
+void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber) {
+  if (pinNumber >= 0 && pinNumber < I2C_MCP_PINCOUNT) {
+    for (int i = 0; i < 16; i++) {
+      if (i == pinNumber) {
+        mcp.digitalWrite(i, LOW); // Turn on the specified pin
+      } else {
+        mcp.digitalWrite(i, HIGH); // Turn off all other pins
+      }
+    }
+  }
+}

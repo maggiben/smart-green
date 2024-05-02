@@ -21,3 +21,5 @@
 #define FLOW_METER_PIN              33
 #define FLOW_METER_INTERRUPT        06
 #define FLOW_CALIBRATION_FACTOR     220
+#define USE_DISPLAY                 true
+#define DISPLAY_ADDRESSS            0x3C
