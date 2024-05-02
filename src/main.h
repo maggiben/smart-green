@@ -143,7 +143,7 @@ void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
 
 // This function is called when the sysInfo service was requested.
-void handleSysInfo();
+void handleSystemInfo();
 void handleValve();
 void handleSaveSettings();
 void handlePump();

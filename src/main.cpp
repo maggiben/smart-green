@@ -78,6 +78,18 @@ void setup() {
     ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Connected: "); PRINT(ip); TRACE("\n");
+
+    // // Set up the OTA end callback
+    ArduinoOTA.onEnd([]() {
+      TRACE("OTA update successful, rebooting...\n");
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      ESP.restart();
+    });
+
+    ArduinoOTA.setHostname(settings.hostname);
+    // Initialize OTA
+    ArduinoOTA.begin();  
+
   } else {
     TRACE("\n");  
     beep(2);  
@@ -93,7 +105,7 @@ void setup() {
   server.enableCORS(true);
   // REST Endpoint (Only if Connected)
   server.on("/", handleRoot);
-  server.on("/api/sysinfo", HTTP_GET, handleSysInfo);
+  server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
   server.on("/api/settings", HTTP_POST, handleSaveSettings);
   // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
   server.on("/api/valve", HTTP_POST, handleValve);
@@ -110,9 +122,6 @@ void setup() {
   beep(1);
 
   displayTime();
-
-  // Initialize OTA
-  ArduinoOTA.begin();
 
   // xTaskCreate(
   //   taskFunction,       // Task function
@@ -277,12 +286,13 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
   } while (!isConnected() && i < max_tries);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+
   // Initialize mDNS
   while (!MDNS.begin(settings.hostname)) {
     TRACE("Error setting up MDNS responder!\"");
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
-  // Broadcast the hostname
+
   return isConnected();
 }
 
@@ -303,7 +313,7 @@ void syncRTC() {
 }
 
 // This function is called when the sysInfo service was requested.
-void handleSysInfo() {
+void handleSystemInfo() {
   String result;
 
   result += "{\n";
@@ -315,7 +325,8 @@ void handleSysInfo() {
   result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
-  result += "  \"time\": " + String(rtc.now().unixtime()) + ",\n";
+  result += "  \"timestamp\": " + String(rtc.now().unixtime()) + ",\n";
+  result += "  \"timestamp2\": " + String(rtc.now().unixtime()) + ",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
   result += "  \"mcp\": \"" + String(mcp.readGPIOAB()) + "\",\n";
@@ -584,7 +595,7 @@ void loop() {
   // struct tm *timeinfo;
   // timeinfo = localtime(&now);
   // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   // Handle OTA updates
   ArduinoOTA.handle();
