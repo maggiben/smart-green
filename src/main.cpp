@@ -74,16 +74,14 @@ void setup() {
   EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
   TRACE("EEPROM2: %s now: %d\n", settings.hostname, rtc.now().unixtime());
 
-  connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
-  
-  if (isConnected()) {
+  if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Connected: "); PRINT(ip); TRACE("\n");
   } else {
     TRACE("\n");  
     beep(2);  
-    errorMsg("Error connecting to WiFi");
+    handleWifiConnectionError("WiFi connection error", settings);
   }
 
   // Ask for the current time using NTP request builtin into ESP firmware.
@@ -140,7 +138,7 @@ void pulseCounter() {
   }
 }
 
-void displayFlow() {
+void calcFlow() {
   // Note the time this processing pass was executed. Note that because we've
   // disabled interrupts the millis() function won't actually be incrementing right
   // at this point, but it will still return the value it was set to just before
@@ -166,40 +164,29 @@ void displayFlow() {
     // Add the millilitres passed in this second to the cumulative total
     TOTAL_MILLILITRES += FLOW_MILLILITRES;
 
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-
-    display.printf("Raw: %.5f\n", FLOW_RATE);
-
-    // display.print("Flow rate: ");
-    // display.print(FLOW_MILLILITRES, DEC);  // Print the integer part of the variable
-    // display.println(" mL/s");
-
-    display.printf("Flow: %.2fmL/s\n", FLOW_MILLILITRES);
-
-    // display.print("Total: ");        
-    // display.print(TOTAL_MILLILITRES, DEC);
-    // display.println(" mL");
-
-    // display.printf("Total: %lumL\n", TOTAL_MILLILITRES);
-    display.printf("Total: %lumL\n", TOTAL_MILLILITRES);
-
-    // display.print("Secs: ");        
-    // display.print((millis() - OLD_INT_TIME), DEC);
-    // display.println("");
-
-    display.printf("Secs: %d\n", (millis() - START_INT_TIME) / 1000);
-    
-    display.setCursor(0, 0);
-    display.display(); // actually display all of the above
+    // Display flow
+    displayFlow();
 
     // Reset the pulse counter so we can start incrementing again
     FLOW_METER_PULSE_COUNT = 0;
     // Enable the interrupt again now that we've finished sending output
     attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   }
+}
+
+void displayFlow() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+
+  display.printf("Raw: %.5f\n", FLOW_RATE);
+  display.printf("Flow: %.2fmL/s\n", FLOW_MILLILITRES);
+  display.printf("Total: %lumL\n", TOTAL_MILLILITRES);
+  display.printf("Secs: %d\n", (millis() - START_INT_TIME) / 1000);
+  
+  display.setCursor(0, 0);
+  display.display(); // actually display all of the above
 }
 
 void setTimezone(String timezone) {
@@ -588,18 +575,6 @@ void handleSaveSettings() {
   }
 }
 
-void errorMsg(String error, bool restart) {
-  TRACE("Error: %s", error.c_str());
-  if (restart) {
-    TRACE("Rebooting now...\n");
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    if (settings.rebootOnWifiFail) {
-      ESP.restart();
-    }
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-  }
-}
-
 void loop() {
   server.handleClient();
   // time_t now = time(nullptr);
@@ -655,7 +630,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   FLOW_METER_PULSE_COUNT = 0;
   for(uint8_t i = 0; i < duration; i++) {
-    displayFlow();
+    calcFlow();
     if (TOTAL_MILLILITRES > millilitres) {
       break;
     }
@@ -686,7 +661,7 @@ void handleTestFlow() {
   attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   TOTAL_MILLILITRES = 0;
   for(uint8_t i = 0; i < 20; i++) {
-    displayFlow();
+    calcFlow();
   }
   detachInterrupt(FLOW_METER_INTERRUPT);
   

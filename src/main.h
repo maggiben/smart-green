@@ -62,7 +62,7 @@ Settings settings = {
   // Assuming updatedOn is 0
   0,
   // Assuming reboot on wifi failed is false
-  REBOOT_ON_WIFIFAIL,
+  SETTINGS_REBOOT_ON_WIFIFAIL,
   // Flow calibration value
   FLOW_CALIBRATION_FACTOR,
   // Initializing alarms all to 0 (disabled)
@@ -126,11 +126,12 @@ WebServer server(80);
 #endif
 
 void pulseCounter();
+void calcFlow();
 void displayFlow();
 void handleTestFlow();
 
 void beep(uint8_t uint8_t);
-void errorMsg(String error, bool restart = true);
+// void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
 void syncRTC();
@@ -140,10 +141,6 @@ void printLocalTime();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
 
-// REST API
-void turnOnPin(int pinNumber);
-void get2cDevices(byte* devices);
-String getI2cDeviceList();
 // This function is called when the sysInfo service was requested.
 void handleSysInfo();
 void handleValve();

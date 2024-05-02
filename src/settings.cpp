@@ -165,6 +165,7 @@ bool isAlarmOn(Settings settings, DateTime now) {
       
       uint8_t startAlarmHour = settings.alarm[i][0][1];
       uint8_t startAlarmMinute = settings.alarm[i][0][2];
+      uint8_t active = settings.alarm[i][0][3];
 
       uint8_t endAlarmHour = settings.alarm[i][1][1];
       uint8_t endAlarmMinute = settings.alarm[i][1][2];
@@ -175,8 +176,10 @@ bool isAlarmOn(Settings settings, DateTime now) {
         if(now.hour() >= startAlarmHour && now.hour() <= endAlarmHour) {
           if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
             // Alarm is active
-            return true;
-            break;
+            if (active) {
+              return true;
+              break;
+            }
           }
         }
       }
@@ -320,5 +323,14 @@ void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber) {
         mcp.digitalWrite(i, HIGH); // Turn off all other pins
       }
     }
+  }
+}
+
+void handleWifiConnectionError(String error, Settings settings, bool restart) {
+  TRACE("Error: %s\n", error.c_str());
+  if (settings.rebootOnWifiFail) {
+    TRACE("Rebooting now...\n");
+    vTaskDelay(150 / portTICK_PERIOD_MS);
+    ESP.restart();
   }
 }
