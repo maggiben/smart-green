@@ -293,7 +293,6 @@ void beep(uint8_t times) {
   }
 }
 
-
 String getI2cDeviceList() {
   String result = "[";
   byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
@@ -308,7 +307,6 @@ String getI2cDeviceList() {
   free(i2cDevices);
   return result;
 }
-
 
 bool isConnected() {
   return (WiFi.status() == WL_CONNECTED);
