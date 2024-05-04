@@ -1,0 +1,141 @@
+{
+	"info": {
+		"_postman_id": "0f16f847-2aa6-4801-9278-03659ba7d365",
+		"name": "smart-green",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "31918756"
+	},
+	"item": [
+		{
+			"name": "http://{{hostname}}/api/alarm",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"alarm\": [\n        [\n            {\n                \"weekday\": 32,\n                \"hour\": 20,\n                \"minute\": 31,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 32,\n                \"hour\": 20,\n                \"minute\": 32,\n                \"status\": 1\n            }\n        ] \n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/alarm"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/alarm",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://{{hostname}}/api/alarm"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/test-flow",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/test-flow"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/pump",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"pump\": 0,\n    \"value\": \"on\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/pump"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/valve",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"pin\": 0,\n    \"value\": \"off\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/valve"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/systeminfo",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://{{hostname}}/api/systeminfo"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/logs",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://{{hostname}}/api/logs"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "hostname",
+			"value": "indoor_chico_01.local",
+			"type": "string"
+		}
+	]
+}

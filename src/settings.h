@@ -47,6 +47,7 @@ struct Settings {
 void printI2cDevices(byte* devices = NULL);
 String getI2cDeviceList();
 String getAlarms(Settings settings);
+int getActiveAlarmId(Settings settings, DateTime now);
 bool isAlarmOn(Settings settings, DateTime now);
 void beep(uint8_t times);
 bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);

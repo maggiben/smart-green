@@ -245,7 +245,7 @@ void displayTime() {
   DateTime now = rtc.now();
   char * time = (char *) malloc(sizeof(char) * 64);
   memset(time, 0, sizeof(char) * 64);
-  sprintf(time, "TIME: %02d:%02d:%02d", now.hour(), now.minute(), now.second() );
+  sprintf(time, "TIME: %02d:%02d:%02d A:%d", now.hour(), now.minute(), now.second(), getActiveAlarmId(settings, rtc.now()));
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -254,7 +254,7 @@ void displayTime() {
   display.print("IP: "); display.println(ip);
   // display.print("C: "); display.println(rtc.getTemperature());
   if (DISPLAY_INFO_DATA == 0) {
-    display.print("Alarm: "); display.println(String(isAlarmOn(settings, rtc.now())));
+    display.print("Temp2: ");  display.print(rtc.getTemperature());  display.println(" C");
   } else if (DISPLAY_INFO_DATA == 1) {
     // display.print("Week: "); display.println(String((8 & (1 << rtc.now().dayOfTheWeek()))));
     display.print("Week: "); display.println(String(1 << rtc.now().dayOfTheWeek()));
@@ -328,10 +328,10 @@ void handleSystemInfo() {
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   result += "  \"timestamp\": " + String(rtc.now().unixtime()) + ",\n";
-  result += "  \"timestamp2\": " + String(rtc.now().unixtime()) + ",\n";
+  result += "  \"uptime\": " + String(millis()) + ",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
-  result += "  \"i2cDevices\": \"" + String(getI2cDeviceList()) + "\",\n";
-  result += "  \"mcp\": \"" + String(mcp.readGPIOAB()) + "\",\n";
+  result += "  \"i2cBusDevices:\": " + String(getI2cDeviceList()) + ",\n";
+  result += "  \"mcp\": " + String(mcp.readGPIOAB()) + ",\n";
   result += "  \"watering\": {\n";
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
@@ -346,8 +346,8 @@ void handleSystemInfo() {
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
-  result += "    \"alarm\": " + getAlarms(settings) + ",\n";
-  result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + "\n";
+  result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
+  result += "    \"alarm\": " + getAlarms(settings) + "\n";
   result += "  }\n";
   result += "}";
 
@@ -621,9 +621,9 @@ void loop() {
   // Handle OTA updates
   ArduinoOTA.handle();
 
-  bool activateAlarm = isAlarmOn(settings, rtc.now());
+  int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
-  if (activateAlarm && !IS_ALARM_ON) {
+  if (activateAlarm > -1 && !IS_ALARM_ON) {
     IS_ALARM_ON = true;
     xTaskCreate(
       pumpWater,          // Task function
@@ -633,14 +633,14 @@ void loop() {
       1,                  // Task priority
       NULL                // Task handle
     );
-  } else if (!activateAlarm || !IS_ALARM_ON) {
+  } else if (activateAlarm <= -1 || !IS_ALARM_ON) {
     displayTime();
   }
 }
 
 void pumpWater(void *parameter) {
   handleTestFlow();
-  while(isAlarmOn(settings, rtc.now())) {
+  while(getActiveAlarmId(settings, rtc.now()) > -1) {
     displayTime();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
@@ -686,9 +686,9 @@ void handleTestFlow() {
   vTaskDelay(500 / portTICK_PERIOD_MS);
   waterPlant(1, 20, 250);
   vTaskDelay(500 / portTICK_PERIOD_MS);
-  waterPlant(2, 20, 250);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  waterPlant(3, 20, 250);
+  // waterPlant(2, 20, 250);
+  // vTaskDelay(500 / portTICK_PERIOD_MS);
+  // waterPlant(3, 20, 250);
   SERVER_RESPONSE_OK("{\"success\":true}");
   return;
   mcp.writeGPIOAB(0b1111111111111110);
