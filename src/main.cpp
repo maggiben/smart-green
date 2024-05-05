@@ -336,10 +336,11 @@ void handleSystemInfo() {
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
   result += "  },\n";
-  result += "  \"logs\": {\n";
+  result += "  \"sdcard\": {\n";
   result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
   result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
-  result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + "\n";
+  result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
+  result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
@@ -487,7 +488,7 @@ void handleLogs() {
     DateTime now = rtc.now();
 
     result += "{\n";
-    result += "  \"files\": " + listRootDirectory() + ",\n";
+    result += "  \"files\": " + listDirectory("/logs") + ",\n";
     result += "  \"timestamp\": " + String(now.unixtime(), DEC) + ",\n";
     result += "  \"content\":  \"" + contents + "\"\n";
     result += "}";
@@ -514,7 +515,7 @@ void handleLogs() {
     // String alarm = printAlarm(settings);
 
     result += "{\n";
-    result += "  \"files\": " + listRootDirectory() + "\n";
+    result += "  \"files\": " + listDirectory("/logs") + "\n";
     result += "}";
 
     server.sendHeader("Cache-Control", "no-cache");
@@ -525,7 +526,7 @@ void handleLogs() {
     // String alarm = printAlarm(settings);
 
     result += "{\n";
-    result += "  \"files\": " + listRootDirectory() + "\n";
+    result += "  \"files\": " + listDirectory("/logs") + "\n";
     result += "}";
   
     server.sendHeader("Cache-Control", "no-cache");

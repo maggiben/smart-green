@@ -118,10 +118,10 @@ bool initSDCard() {
   return true;
 }
 
-String listRootDirectory() {
+String listDirectory(const char* directory) {
   String fileList = "[";
 
-  File root = SD.open("/");
+  File root = SD.open(directory);
   if (root) {
     while (true) {
       File entry = root.openNextFile();
@@ -143,8 +143,11 @@ String listRootDirectory() {
   return fileList;
 }
 
-bool saveLog(DateTime now, String name, int id, int milliliters, int duration) {
-  String fileName = "/log-" + String(now.unixtime()) + ".csv";
+bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder) {
+  if (!createDirectoryIfNotExists(destinationFolder)) {
+    return false;
+  }
+  String fileName = String(destinationFolder) + "/log-" + String(now.unixtime()) + ".csv";
   File file = SD.open(fileName, FILE_WRITE);
   
   if (!file) {
@@ -157,6 +160,38 @@ bool saveLog(DateTime now, String name, int id, int milliliters, int duration) {
   
   file.close();
   return true;
+}
+
+bool createDirectoryIfNotExists(const char* path) {
+  if (!SD.exists(path)) {
+    if (SD.mkdir(path)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+unsigned long getLogCount(const char* destinationFolder) {
+  File directory = SD.open(destinationFolder);
+  unsigned long fileCount = 0;
+
+  if (directory) {
+    while (true) {
+      File entry = directory.openNextFile();
+      if (!entry) {
+        break;
+      }
+      String fileName = entry.name();
+      if (fileName.startsWith("log-") && fileName.endsWith(".csv")) {
+        fileCount++;
+      }
+      entry.close();
+    }
+    directory.close();
+  }
+  return fileCount;
 }
 
 int getActiveAlarmId(Settings settings, DateTime now) {

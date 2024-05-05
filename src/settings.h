@@ -54,9 +54,11 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
 bool getAlarmRunningState();
 void setAlarmRunningState(bool state);
 void toggleAlarmRunningState();
-String listRootDirectory();
+String listDirectory(const char* directory = "/logs");
+bool createDirectoryIfNotExists(const char* path);
 bool initSDCard();
-bool saveLog(DateTime now, String name, int id, int milliliters, int duration);
+bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder = "/logs");
 bool isConnected();
 void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
 void handleWifiConnectionError(String error, Settings settings, bool restart = false);
+unsigned long getLogCount(const char* destinationFolder = "/logs");
