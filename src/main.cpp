@@ -35,16 +35,18 @@
 
 #include "main.h"
 
-void setupMcp() {
+bool setupMcp() {
   // uncomment appropriate mcp.begin
   if (!mcp.begin_I2C()) {
     TRACE("MCP I2c Error\n");
+    return false;
   }
   for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
     mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
     mcp.digitalWrite(i, HIGH); // Set all GPIO pins to HIGH
   }
   mcp.writeGPIOAB(0b1111111111111111);
+  return true;
 }
 
 void setup() {
@@ -60,19 +62,28 @@ void setup() {
   // Check if EEPROM is ready
   Wire.beginTransmission(EEPROM_ADDRESS);
   if (Wire.endTransmission() != 0) {
-    TRACE("EEPROM not found or not ready\n");
+    settings.hasEEPROM = false;
     beep(2);
-    // ESP.restart();
+    TRACE("EEPROM not found or not ready\n");
+  } else {
+    // Init EEPROM chip in the RTC module
+    if (EEPROM.begin(EEPROM_SIZE)) {
+      // Read EEPROM settings
+      EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
+      // TRACE("Settings: %s now: %d\n", settings.hostname, rtc.now().unixtime());
+    } else {
+      settings.hasEEPROM = false;
+      TRACE("EEPROM not Working\n");
+    };
   }
 
   if (!rtc.begin()) {
     TRACE("Couldn't find RTC\n");
-    // Serial.flush();
     beep(2);
+    settings.hasRTC = false;
+    // Serial.flush();
     // abort();
-  }
-
-  if (rtc.lostPower()) {
+  } else if (rtc.lostPower()) {
     TRACE("RTC lost power, let's set the time!\n");
     // When time needs to be set on a new device, or after a power loss, the
     // following line sets the RTC to the date & time this sketch was compiled
@@ -83,12 +94,13 @@ void setup() {
     beep(2);
   }
 
-  // Init EEPROM chip in the RTC module
-  EEPROM.begin(EEPROM_SIZE);
-
   // Setup i2c port extender
-  setupMcp();
+  if(!setupMcp()) {
+    settings.hasMCP = false;
+    TRACE("MCP not Working\n");
+  }
 
+  TRACE("Hostname: %s\n ", settings.hostname);
   printI2cDevices();
 
   if(!initSDCard()) {
@@ -97,17 +109,12 @@ void setup() {
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
-    settings.useDisplay = false;
+    settings.hasDisplay = false;
   } else {
-    // Display ok clear the buffer.
-    settings.useDisplay = USE_DISPLAY;
+    // Clear display
     display.clearDisplay();
     display.display();
   }
-
-  // EEPROM
-  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
-  TRACE("EEPROM2: %s now: %d\n", settings.hostname, rtc.now().unixtime());
 
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     ip = WiFi.localIP();
@@ -155,9 +162,8 @@ void setup() {
 
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
+  // Good To Go!
   beep(1);
-
-  displayTime();
 
   // xTaskCreate(
   //   taskFunction,       // Task function
@@ -167,13 +173,6 @@ void setup() {
   //   1,                  // Task priority
   //   NULL                // Task handle
   // );
-  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
-  (state to LOW state)*/
-  // attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING); //you can use Rising or Falling
-  // //create a task that executes the Task0code() function, with priority 1 and executed on core 0
-  // xTaskCreatePinnedToCore(Task0code, "Task0", 10000, NULL, 1, &Task0, 0);
-  // //create a task that executes the Task0code() function, with priority 1 and executed on core 1
-  // xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 1);
 }
 
 void pulseCounter() {
@@ -244,20 +243,25 @@ void setTimezone(String timezone) {
 }
 
 void initTime(String timezone) {
-  Settings *settings = (Settings *) malloc(sizeof(Settings));
+  // Settings *settings = (Settings *) malloc(sizeof(Settings));
   // DateTime dateTime;
-  tm localTime;
+  tm timeinfo;
   TRACE("Setting up time\n");
   configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset
-  if(!getLocalTime(&localTime)){
+  // Now we can set the real timezone
+  setTimezone(timezone);
+  if(!getLocalTime(&timeinfo)){
     TRACE("Failed to obtain time\n");
     return;
   }
-  TRACE("Got the time from NTP\n");
-  // Now we can set the real timezone
-  setTimezone(timezone);
-  TRACE("TIME: %02d:%02d:%02d\n", localTime.tm_hour, localTime.tm_min, localTime.tm_sec);
-  syncRTC();
+  TRACE("NTP TIME: %02d:%02d:%02d\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  if (settings.hasRTC) {
+    syncRTC();
+  } else {
+    // Convert to Unix time
+    time_t now = mktime(&timeinfo);
+    TRACE("Unix Time: %ld\n", now);
+  }
 }
 
 void printLocalTime() {
@@ -266,7 +270,7 @@ void printLocalTime() {
     TRACE("Failed to obtain time 1\n");
     return;
   }
-  PRINTLN(&timeinfo, "%A, %B %d %Y %H:%M:%S zone %Z %z ");
+  PRINTLN(&timeinfo, "Local Time: %A, %B %d %Y %H:%M:%S zone %Z %z ");
 }
 
 void printRtcTime() {
@@ -326,7 +330,7 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
 
   // Initialize mDNS
   while (!MDNS.begin(settings.hostname)) {
-    TRACE("Error setting up MDNS responder!\"");
+    TRACE("Error setting up MDNS responder!\n");
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 
@@ -359,14 +363,26 @@ void handleSystemInfo() {
   result += "  \"chipRevision\": " + String(ESP.getChipRevision()) + ",\n";
   result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
-  result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
-  result += "  \"timestamp\": " + String(rtc.now().unixtime()) + ",\n";
+  if (settings.hasRTC) {
+    result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
+    result += "  \"timestamp\": " + String(rtc.now().unixtime()) + ",\n";
+  } else {
+    tm timeInfo;
+    if(!getLocalTime(&timeInfo)){
+      TRACE("Failed to obtain time\n");
+    } else {
+      time_t now = mktime(&timeInfo);
+      result += "  \"timestamp\": " + String(now) + ",\n";
+    }
+  }
   result += "  \"uptime\": " + String(millis()) + ",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
-  result += "  \"i2cBusDevices:\": " + String(getI2cDeviceList()) + ",\n";
-  result += "  \"mcp\": " + String(mcp.readGPIOAB()) + ",\n";
+  // result += "  \"i2cBusDevices:\": " + String(getI2cDeviceList()) + ",\n";
+  if (settings.hasMCP) {
+    result += "  \"mcp\": " + String(mcp.readGPIOAB()) + ",\n";
+  }
   result += "  \"watering\": {\n";
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
@@ -656,6 +672,8 @@ void loop() {
 
   // Handle OTA updates
   ArduinoOTA.handle();
+
+  return;
 
   int activateAlarm = getActiveAlarmId(settings, rtc.now());
 

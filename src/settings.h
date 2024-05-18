@@ -76,11 +76,14 @@ struct Settings {
   // };
   uint8_t maxPlants;
   uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE];
-  bool useDisplay;
+  bool hasDisplay;
+  bool hasRTC;
+  bool hasEEPROM;
+  bool hasMCP;
 };
 
 void printI2cDevices(byte* devices = NULL);
-String getI2cDeviceList();
+// String getI2cDeviceList();
 String getAlarms(Settings settings);
 int getActiveAlarmId(Settings settings, DateTime now);
 bool isAlarmOn(Settings settings, DateTime now);

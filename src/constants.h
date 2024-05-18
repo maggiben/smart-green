@@ -57,4 +57,7 @@
 #define FLOW_METER_INTERRUPT        06
 #define FLOW_CALIBRATION_FACTOR     220
 #define USE_DISPLAY                 true
+#define USE_RTC                     true
+#define USE_EEPROM                  true
+#define USE_MCP                     true
 #define DISPLAY_ADDRESSS            0x3C

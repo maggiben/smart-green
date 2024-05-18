@@ -504,19 +504,24 @@ void beep(uint8_t times) {
   }
 }
 
-String getI2cDeviceList() {
-  String result = "[";
-  byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
-  for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
-    result += String(i2cDevices[i]);
-    if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
-      result += ", ";
-    }
-  }
-  result += "]";
-  free(i2cDevices);
-  return result;
-}
+// String getI2cDeviceList() {
+//   String result = "[";
+//   byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
+//   if (i2cDevices == NULL) {
+//     TRACE("Failed to allocate memory\n");
+//     return String("[]");
+//   }
+//   memset(i2cDevices, 0, sizeof(byte) * MAX_I2C_DEVICES);
+//   for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
+//     result += String(i2cDevices[i]);
+//     if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
+//       result += ", ";
+//     }
+//   }
+//   result += "]";
+//   free(i2cDevices);
+//   return result;
+// }
 
 bool isConnected() {
   return (WiFi.status() == WL_CONNECTED);

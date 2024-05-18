@@ -42,6 +42,7 @@
 #include <FS.h>
 #include <SD.h>
 #include <EEPROM.h>
+#include <time.h>
 #include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -73,7 +74,10 @@ Settings settings = {
   // Plant settings
   {{0}},
   // Attemp to use Graphical Display
-  USE_DISPLAY
+  USE_DISPLAY,
+  USE_RTC,
+  USE_EEPROM,
+  USE_MCP
 };
 
 // i2c Clock
@@ -126,6 +130,7 @@ WebServer server(80);
   byte DISPLAY_INFO_DATA = 0;
 #endif
 
+bool setupMcp();
 void pulseCounter();
 void calcFlow();
 void displayFlow();
