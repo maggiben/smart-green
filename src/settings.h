@@ -64,7 +64,7 @@ struct Settings {
   uint8_t id;
   uint32_t lastDateTimeSync;
   uint32_t updatedOn;
-  boolean rebootOnWifiFail;
+  bool rebootOnWifiFail;
   uint8_t flowCalibrationFactor;
   Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES];
   /* In case you need to set the values statically use these: */

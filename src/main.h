@@ -139,7 +139,7 @@ void handleTestFlow();
 void beep(uint8_t uint8_t);
 // void errorMsg(String error, bool restart = true);
 bool isConnected();
-bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
+bool connectToWiFi(const char* ssid, const char* password, int max_tries = 60, int pause = 1000);
 void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);

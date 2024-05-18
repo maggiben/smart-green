@@ -100,7 +100,6 @@ void setup() {
     TRACE("MCP not Working\n");
   }
 
-  TRACE("Hostname: %s\n ", settings.hostname);
   printI2cDevices();
 
   if(!initSDCard()) {
@@ -114,6 +113,7 @@ void setup() {
     // Clear display
     display.clearDisplay();
     display.display();
+    displayTime();
   }
 
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
@@ -131,36 +131,35 @@ void setup() {
 
     ArduinoOTA.setHostname(settings.hostname);
     // Initialize OTA
-    ArduinoOTA.begin();  
+    ArduinoOTA.begin();
 
+    // Ask for the current time using NTP request builtin into ESP firmware.
+    TRACE("Setup ntp...\n");
+    initTime(TIMEZONE);   // Set for Melbourne/AU
+    printLocalTime();
+
+    // Enable CORS header in webserver results
+    server.enableCORS(true);
+    // REST Endpoint (Only if Connected)
+    server.on("/", handleRoot);
+    server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
+    server.on("/api/settings", HTTP_POST, handleSaveSettings);
+    // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
+    server.on("/api/valve", HTTP_POST, handleValve);
+    server.on("/api/pump", HTTP_POST, handlePump);
+    server.on("/api/test-flow", HTTP_GET, handleTestFlow);
+    server.on("/api/alarm", HTTP_GET, handleAlarm);
+    server.on("/api/alarm", HTTP_POST, handleAlarm);
+    server.on("/api/logs", HTTP_GET, handleLogs);
+    // Start Server
+    server.begin();
+
+    TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
   } else {
-    TRACE("\n");  
+    TRACE("Wifi not connected!\n");  
     beep(2);  
     handleWifiConnectionError("WiFi connection error", settings);
   }
-
-  // Ask for the current time using NTP request builtin into ESP firmware.
-  TRACE("Setup ntp...\n");
-  initTime(TIMEZONE);   // Set for Melbourne/AU
-  printLocalTime();
-
-  // Enable CORS header in webserver results
-  server.enableCORS(true);
-  // REST Endpoint (Only if Connected)
-  server.on("/", handleRoot);
-  server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
-  server.on("/api/settings", HTTP_POST, handleSaveSettings);
-  // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
-  server.on("/api/valve", HTTP_POST, handleValve);
-  server.on("/api/pump", HTTP_POST, handlePump);
-  server.on("/api/test-flow", HTTP_GET, handleTestFlow);
-  server.on("/api/alarm", HTTP_GET, handleAlarm);
-  server.on("/api/alarm", HTTP_POST, handleAlarm);
-  server.on("/api/logs", HTTP_GET, handleLogs);
-  // Start Server
-  server.begin();
-
-  TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
 
   // Good To Go!
   beep(1);
@@ -673,22 +672,22 @@ void loop() {
   // Handle OTA updates
   ArduinoOTA.handle();
 
-  return;
+  if (settings.hasRTC) {
+    int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
-  int activateAlarm = getActiveAlarmId(settings, rtc.now());
-
-  if (activateAlarm > -1 && !IS_ALARM_ON) {
-    IS_ALARM_ON = true;
-    xTaskCreate(
-      pumpWater,          // Task function
-      "AlarmTask",        // Task name
-      8192,               // Stack size (bytes)
-      NULL,               // Task parameter
-      1,                  // Task priority
-      NULL                // Task handle
-    );
-  } else if (activateAlarm <= -1 || !IS_ALARM_ON) {
-    displayTime();
+    if (activateAlarm > -1 && !IS_ALARM_ON) {
+      IS_ALARM_ON = true;
+      xTaskCreate(
+        pumpWater,          // Task function
+        "AlarmTask",        // Task name
+        8192,               // Stack size (bytes)
+        NULL,               // Task parameter
+        1,                  // Task priority
+        NULL                // Task handle
+      );
+    } else if (activateAlarm <= -1 || !IS_ALARM_ON && settings.hasDisplay) {
+      displayTime();
+    }
   }
 }
 
