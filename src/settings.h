@@ -1,3 +1,38 @@
+/**
+ * @file         : settings.h
+ * @summary      : Smart Indoor Automation System
+ * @version      : 1.0.0
+ * @project      : smart-green
+ * @description  : A Smart Indoor Automation System
+ * @author       : Benjamin Maggi
+ * @email        : benjaminmaggi@gmail.com
+ * @date         : 23 Apr 2024
+ * @license:     : MIT
+ *
+ * Copyright 2021 Benjamin Maggi <benjaminmaggi@gmail.com>
+ *
+ *
+ * License:
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files
+ * (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to permit
+ * persons to whom the Software is furnished to do so, subject to the
+ * following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ **/
+
 #pragma once
 #include <RTClib.h> // Date and time functions using a DS3231 RTC connected via I2C and Wire lib
 #include <EEPROM.h>
@@ -54,11 +89,12 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
 bool getAlarmRunningState();
 void setAlarmRunningState(bool state);
 void toggleAlarmRunningState();
-String listDirectory(const char* directory = "/logs");
+String listDirectory(const char* directory = "/logs", unsigned long from = 0, unsigned long to = 1024);
 bool createDirectoryIfNotExists(const char* path);
 bool initSDCard();
 bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder = "/logs");
 bool isConnected();
+String listDirectory2(const char* directory);
 void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
 void handleWifiConnectionError(String error, Settings settings, bool restart = false);
 unsigned long getLogCount(const char* destinationFolder = "/logs");

@@ -1,3 +1,38 @@
+/**
+ * @file         : settings.cpp
+ * @summary      : Smart Indoor Automation System
+ * @version      : 1.0.0
+ * @project      : smart-green
+ * @description  : A Smart Indoor Automation System
+ * @author       : Benjamin Maggi
+ * @email        : benjaminmaggi@gmail.com
+ * @date         : 23 Apr 2024
+ * @license:     : MIT
+ *
+ * Copyright 2021 Benjamin Maggi <benjaminmaggi@gmail.com>
+ *
+ *
+ * License:
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files
+ * (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to permit
+ * persons to whom the Software is furnished to do so, subject to the
+ * following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ **/
+
 #include "settings.h"
 
 void saveSettings(Settings* settings) {
@@ -118,7 +153,40 @@ bool initSDCard() {
   return true;
 }
 
-String listDirectory(const char* directory) {
+String listDirectory(const char* directory, unsigned long from, unsigned long to) {
+  String fileList = "[";
+
+  File root = SD.open(directory);
+  if (root) {
+    int count = 0;
+    while (true) {
+      File entry = root.openNextFile();
+      if (!entry || count >= 1000) {
+        break;
+      }
+      String fileName = entry.name();
+      if (fileName.startsWith("log-") && fileName.endsWith(".csv")) {
+        int timestamp = fileName.substring(4, fileName.length() - 4).toInt();
+        if (timestamp >= from && timestamp <= to) {
+          if (fileList != "[") {
+            fileList += ",";
+          }
+          fileList += "\"" + fileName + "\"";
+          count++;
+        }
+      }
+      entry.close();
+    }
+    root.close();
+  } else {
+    TRACE("Failed to open directory\n");
+  }
+
+  fileList += "]";
+  return fileList;
+}
+
+String listDirectory2(const char* directory) {
   String fileList = "[";
 
   File root = SD.open(directory);
@@ -142,6 +210,40 @@ String listDirectory(const char* directory) {
   fileList += "]";
   return fileList;
 }
+
+String listLogFiles(const char* directory, int from, int to) {
+  String fileList = "[";
+
+  File root = SD.open(directory);
+  if (root) {
+    int count = 0;
+    while (true) {
+      File entry = root.openNextFile();
+      if (!entry || count >= 1000) {
+        break;
+      }
+      String fileName = entry.name();
+      if (fileName.startsWith("log-") && fileName.endsWith(".csv")) {
+        int timestamp = fileName.substring(4, fileName.length() - 4).toInt();
+        if (timestamp >= from && timestamp <= to) {
+          if (fileList != "[") {
+            fileList += ",";
+          }
+          fileList += "\"" + fileName + "\"";
+          count++;
+        }
+      }
+      entry.close();
+    }
+    root.close();
+  } else {
+    TRACE("Failed to open directory\n");
+  }
+
+  fileList += "]";
+  return fileList;
+}
+
 
 bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder) {
   if (!createDirectoryIfNotExists(destinationFolder)) {
