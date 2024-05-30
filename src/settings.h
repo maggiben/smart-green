@@ -48,13 +48,18 @@
 #define SETTINGS_ALARM_STATES             2       /* 2 states on and off */
 #define SETTINGS_ALARM_DATA_STORE         4       /* Alarm store array: "weekday", "hour" and "minute" */
 #define SETTINGS_MAX_PLANTS               10      /* Maximun amount of allowed plants */
-#define SETTINGS_PLANTS_STORE             3       /* Plant store array: "id", "pot size" and "status" */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
 struct Alarm {
   uint8_t weekday;
   uint8_t hour;
   uint8_t minute;
+  uint8_t status;
+};
+
+struct Plant {
+  uint8_t id;
+  uint8_t size;
   uint8_t status;
 };
 
@@ -75,7 +80,7 @@ struct Settings {
   //  },
   // };
   uint8_t maxPlants;
-  uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE];
+  Plant plant[SETTINGS_MAX_PLANTS];
   bool hasDisplay;
   bool hasRTC;
   bool hasEEPROM;
@@ -101,3 +106,5 @@ String listDirectory2(const char* directory);
 void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
 void handleWifiConnectionError(String error, Settings settings, bool restart = false);
 unsigned long getLogCount(const char* destinationFolder = "/logs");
+bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]);
+String getPlants(Settings settings);

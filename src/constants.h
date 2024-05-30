@@ -41,7 +41,7 @@
 #define HOSTNAME                    "indoor"
 #define TIMEZONE                    "ART3ARST,M10.1.0/0,M3.3.0/0" // https://gist.github.com/tivaliy/a5ef9c7ccb4d57bdc248f0855c5eb1ff
 #define MAX_I2C_DEVICES             128
-#define I2C_MCP_PINCOUNT            12
+#define I2C_MCP_PINCOUNT            16
 #define EEPROM_ADDRESS              0x57
 #define EEPROM_SIZE                 4096
 #define EEPROM_SETTINGS_ADDRESS     0
@@ -51,8 +51,8 @@
 #define PRINTLN(...)                Serial.println(__VA_ARGS__)
 #define JSONBOOL(value)             value ? F("true") : F("false")
 #define BUZZER_PIN                  32
-#define PUMP1_PIN                   10
-#define PUMP2_PIN                   11
+#define PUMP1_PIN                   12
+#define PUMP2_PIN                   13
 #define FLOW_METER_PIN              33
 #define FLOW_METER_INTERRUPT        06
 #define FLOW_CALIBRATION_FACTOR     220

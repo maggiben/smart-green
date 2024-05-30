@@ -120,6 +120,24 @@ String getAlarms(Settings settings) {
   return result;
 }
 
+
+String getPlants(Settings settings) {
+  String result = "[";
+
+  for (int i = 0; i < SETTINGS_MAX_PLANTS; i++) {
+      result += "{";
+      result += "  \"id\": " + String(settings.plant[i].id) + ",\n";
+      result += "  \"size\": " + String(settings.plant[i].size) + ",\n";
+      result += "  \"status\": " + String(settings.plant[i].status) + "\n";
+      result += "}";
+    if (i < SETTINGS_MAX_PLANTS - 1) {
+      result += ",";
+    }
+  }
+  result += "]";
+  return result;
+}
+
 bool initSDCard() {
   // pinMode(SS, OUTPUT);
   // digitalWrite(SS, HIGH); // Set SS pin high initially
@@ -451,46 +469,49 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
   return true;
 }
 
-void setupPlants(WebServer &server, uint8_t plants[SETTINGS_MAX_PLANTS][SETTINGS_PLANTS_STORE]) {
+bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
   JsonDocument json;
   DeserializationError error = deserializeJson(json, server.arg("plain"));
 
   if (error) {
     TRACE("deserializeJson() failed:\n");
     TRACE(error.c_str());
-    return;
+    return false;
   }
 
-  JsonArray alarmArray = json["plants"].as<JsonArray>();
-  int numPlant = alarmArray.size();
+  JsonArray plantArray = json["plants"].as<JsonArray>();
+  int numPlant = plantArray.size();
   if (numPlant > SETTINGS_MAX_PLANTS) {
     TRACE("Exceeded maximum number of plants\n");
-    return;
+    return false;
   }
 
   for (int plantIndex = 0; plantIndex < numPlant; plantIndex++) {
-    JsonArray plantData = alarmArray[plantIndex].as<JsonArray>();
-    if (plantData.size() != SETTINGS_PLANTS_STORE) {
-      TRACE("Invalid alarm format\n");
-      return;
+    JsonObject plantData = plantArray[plantIndex].as<JsonObject>();
+
+    // Validate that all required fields are present
+    if (!plantData.containsKey("id") || !plantData.containsKey("size") || !plantData.containsKey("status")) {
+      TRACE("Missing required plant fields\n");
+      return false;
     }
-  
-    /* "id", "pot size" and "status" */
-    uint8_t id = plantData[0];
-    uint8_t size = plantData[1];
-    uint8_t status = plantData[2];
+
+    // Extract values from JSON object
+    uint8_t id = plantData["id"];
+    uint8_t size = plantData["size"];
+    uint8_t status = plantData["status"];
 
     // Validate hour, minute, and active values
     if (id < 0 || size < 0) {
       TRACE("Invalid alarm settings\n");
-      return;
+      return false;
     }
 
     // Store the plant settings
-    plants[plantIndex][0] = id;
-    plants[plantIndex][1] = size;
-    plants[plantIndex][2] = status;
+    plants[plantIndex].id = id;
+    plants[plantIndex].size = size;
+    plants[plantIndex].status = status;
   }
+  return true;
 }
 
 void beep(uint8_t times) {

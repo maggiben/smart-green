@@ -111,10 +111,12 @@ void setup() {
     settings.hasDisplay = false;
   } else {
     // Clear display
+    TRACE("Display ok!\n");
     display.clearDisplay();
     display.display();
-    displayTime();
   }
+
+  TRACE("Hostname %s\n", settings.hostname);
 
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     ip = WiFi.localIP();
@@ -142,8 +144,16 @@ void setup() {
     server.enableCORS(true);
     // REST Endpoint (Only if Connected)
     server.on("/", handleRoot);
+    server.on("/api/pumpy", []{
+      mcp.pinMode(PUMP1_PIN, OUTPUT);
+      mcp.digitalWrite(PUMP1_PIN, LOW);
+      vTaskDelay(5000 / portTICK_PERIOD_MS);
+      mcp.digitalWrite(PUMP1_PIN, HIGH);
+      SERVER_RESPONSE_SUCCESS();
+    });
     server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
     server.on("/api/settings", HTTP_POST, handleSaveSettings);
+    server.on("/api/plants", handlePlants);
     // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
     server.on("/api/valve", HTTP_POST, handleValve);
     server.on("/api/pump", HTTP_POST, handlePump);
@@ -155,6 +165,9 @@ void setup() {
     server.begin();
 
     TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+    if (settings.hasDisplay) {
+      displayTime();
+    }
   } else {
     TRACE("Wifi not connected!\n");  
     beep(2);  
@@ -398,7 +411,8 @@ void handleSystemInfo() {
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
   result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
-  result += "    \"alarm\": " + getAlarms(settings) + "\n";
+  result += "    \"alarms\": " + getAlarms(settings) + ",\n";
+  result += "    \"plants\": " + getPlants(settings) + "\n";
   result += "  }\n";
   result += "}";
 
@@ -410,7 +424,6 @@ void handleSystemInfo() {
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
 }
-
 
 void handleRoot() {
   // Set CORS headers
@@ -692,7 +705,7 @@ void loop() {
 }
 
 void pumpWater(void *parameter) {
-  handleTestFlow();
+  waterPlants();
   while(getActiveAlarmId(settings, rtc.now()) > -1) {
     displayTime();
     vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -708,9 +721,11 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   // Turn off all outputs
   mcp.writeGPIOAB(0b1111111111111111);
   vTaskDelay(10 / portTICK_PERIOD_MS);
+  mcp.pinMode(valve, OUTPUT);
   mcp.digitalWrite(valve, LOW);
   // Wait time to settle current and start the pump
   vTaskDelay(250 / portTICK_PERIOD_MS);
+  mcp.pinMode(PUMP1_PIN, OUTPUT);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
   pinMode(FLOW_METER_PIN, INPUT);
@@ -732,6 +747,15 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   detachInterrupt(FLOW_METER_INTERRUPT);
   // Turn all outputs off
   mcp.writeGPIOAB(0b1111111111111111);
+}
+
+void waterPlants() {
+  for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
+    Plant plant = settings.plant[plantIndex];
+    if (plant.status == 1) {
+      waterPlant(plant.id, 20, 250);
+    }
+  }
 }
 
 void handleTestFlow() {
@@ -762,4 +786,46 @@ void handleTestFlow() {
   
   mcp.writeGPIOAB(0b1111111111111111);
   SERVER_RESPONSE_OK("{\"success\":true}");
+}
+
+
+void handlePlants() {
+  if (server.method() == HTTP_GET) {
+    String result;
+
+    result += "{\n";
+    result += "  \"plants\": " + getPlants(settings) + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else if (server.method() == HTTP_POST) {
+    JsonDocument json;
+    
+    if (deserializeJson(json, server.arg("plain"))) {
+      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
+      return;
+    }
+
+    if(!setupPlants(server, settings.plant)) {
+      SERVER_RESPONSE_ERROR(500, "Serialization error");
+      return;
+    };
+      
+    settings.updatedOn = rtc.now().unixtime();
+    EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+    EEPROM.commit();
+
+    String result;
+
+    result += "{\n";
+    result += "  \"plants\": " + getPlants(settings) + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else {
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
+  }
+  return;
 }
