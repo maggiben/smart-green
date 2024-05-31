@@ -144,22 +144,11 @@ void setup() {
     server.enableCORS(true);
     // REST Endpoint (Only if Connected)
     server.on("/", handleRoot);
-    server.on("/api/pumpy", []{
-      mcp.pinMode(PUMP1_PIN, OUTPUT);
-      mcp.digitalWrite(PUMP1_PIN, LOW);
-      vTaskDelay(5000 / portTICK_PERIOD_MS);
-      mcp.digitalWrite(PUMP1_PIN, HIGH);
-      SERVER_RESPONSE_SUCCESS();
-    });
+    server.on("/api/plants", handlePlants);
+    server.on("/api/alarm", handleAlarm);
     server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
     server.on("/api/settings", HTTP_POST, handleSaveSettings);
-    server.on("/api/plants", handlePlants);
-    // fetch('http://192.168.0.152/api/valve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: 9, value: 'off' }) });
-    server.on("/api/valve", HTTP_POST, handleValve);
-    server.on("/api/pump", HTTP_POST, handlePump);
     server.on("/api/test-flow", HTTP_GET, handleTestFlow);
-    server.on("/api/alarm", HTTP_GET, handleAlarm);
-    server.on("/api/alarm", HTTP_POST, handleAlarm);
     server.on("/api/logs", HTTP_GET, handleLogs);
     // Start Server
     server.begin();
@@ -176,15 +165,6 @@ void setup() {
 
   // Good To Go!
   beep(1);
-
-  // xTaskCreate(
-  //   taskFunction,       // Task function
-  //   "AlarmTask",        // Task name
-  //   2048,               // Stack size (bytes)
-  //   NULL,               // Task parameter
-  //   1,                  // Task priority
-  //   NULL                // Task handle
-  // );
 }
 
 void pulseCounter() {
@@ -276,6 +256,13 @@ void initTime(String timezone) {
   }
 }
 
+long int getRtcOffset() {
+  tm timeinfo;
+  getLocalTime(&timeinfo);
+  time_t now = mktime(&timeinfo);
+  return rtc.now().unixtime() - now;
+}
+
 void printLocalTime() {
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
@@ -300,20 +287,12 @@ void displayTime() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0,0);
-  display.print("SSID: "); display.println(WIFI_SSID);
-  display.print("IP: "); display.println(ip);
-  // display.print("C: "); display.println(rtc.getTemperature());
-  if (DISPLAY_INFO_DATA == 0) {
-    display.print("Temp2: ");  display.print(rtc.getTemperature());  display.println(" C");
-  } else if (DISPLAY_INFO_DATA == 1) {
-    // display.print("Week: "); display.println(String((8 & (1 << rtc.now().dayOfTheWeek()))));
-    display.print("Week: "); display.println(String(1 << rtc.now().dayOfTheWeek()));
-  }
-  // display.print("Weekday: "); display.println(String(now.dayOfTheWeek()));
-  // display.print("mask: "); display.println(1 << now.dayOfTheWeek());
-  // display.print("cond: "); display.println((4 & 1 << now.dayOfTheWeek()) != 0);
+  display.setCursor(0, 0);
   display.println(time);
+  display.print("IP: "); display.println(ip);
+  display.print("Temp: "); display.print(rtc.getTemperature());  display.println(" C");
+  // display.print("C: "); display.println(rtc.getTemperature());
+  
   display.setCursor(0, 0);
   display.display(); // actually display all of the above
   free(time);
@@ -380,6 +359,8 @@ void handleSystemInfo() {
   if (settings.hasRTC) {
     result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
     result += "  \"timestamp\": " + String(rtc.now().unixtime()) + ",\n";
+    result += "  \"offset\": " + String(getRtcOffset()) + ",\n";
+    
   } else {
     tm timeInfo;
     if(!getLocalTime(&timeInfo)){
@@ -484,43 +465,6 @@ void handleAlarm() {
   return;
 }
 
-void handleValve() {
-  if (server.method() == HTTP_POST) {
-    if (server.hasArg("plain") == false) {
-      // handle error here
-      SERVER_RESPONSE_ERROR(400, "Invalid value");
-      return;
-    }
-    
-    JsonDocument json;
-    
-    if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
-      return;
-    }
-
-    int pin = json["pin"];
-    String value = json["value"];
-
-    if (value == "on" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
-      turnOnPin(mcp, pin);
-      SERVER_RESPONSE_SUCCESS();
-      return;
-    } else if (value == "off" && pin >= 0 && pin <= I2C_MCP_PINCOUNT) {
-      mcp.digitalWrite(pin, HIGH);
-      SERVER_RESPONSE_SUCCESS();
-      return;
-    } else {
-      SERVER_RESPONSE_ERROR(400, "Invalid value");
-      return;
-    }
-  } else {
-    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
-    return;
-  }
-  return;
-}
-
 void handleLogs() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Max-Age", "10000");
@@ -552,8 +496,8 @@ void handleLogs() {
 
     result += "{\n";
     result += "  \"files\": " + listDirectory2("/logs") + ",\n";
-    result += "  \"count\": " + String(getLogCount("/logs")) + "\n";
-    result += "  \"content\":  \"" + contents + "\",\n";
+    result += "  \"count\": " + String(getLogCount("/logs")) + ",\n";
+    result += "  \"content\":  \"" + contents + "\"\n";
     result += "}";
 
     saveLog(now, contents, 1234, 1000, 3);
@@ -594,49 +538,6 @@ void handleLogs() {
   
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
-  } else {
-    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
-    return;
-  }
-  return;
-}
-
-void handlePump() {
-  if (server.method() == HTTP_POST) {
-    if (server.hasArg("plain") == false) {
-      // handle error here
-      SERVER_RESPONSE_ERROR(400, "Invalid value");
-      return;
-    }
-    
-    JsonDocument json;
-    
-    if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
-      return;
-    }
-
-    int pump = json["pump"];
-    String value = json["value"];
-
-    mcp.digitalWrite(PUMP1_PIN, LOW);
-    SERVER_RESPONSE_SUCCESS();
-    // if (value == "on" && (pump == 1 || pump == 2)) {
-    //   uint8_t onPump = pump == 1 ? PUMP1_PIN : PUMP2_PIN;
-    //   uint8_t offPump = pump != 1 ? PUMP2_PIN : PUMP1_PIN;
-    //   mcp.digitalWrite(onPump, LOW);
-    //   mcp.digitalWrite(offPump, HIGH);
-    //   SERVER_RESPONSE_SUCCESS();
-    //   return;
-    // } else if (value == "off" && (pump == 1 || pump == 2)) {
-    //   uint8_t port = pump == 1 ? PUMP1_PIN : PUMP2_PIN;
-    //   mcp.digitalWrite(port, HIGH);
-    //   SERVER_RESPONSE_SUCCESS();
-    //   return;
-    // } else {
-    //   SERVER_RESPONSE_ERROR(400, "Invalid value");
-    //   return;
-    // }
   } else {
     SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
     return;

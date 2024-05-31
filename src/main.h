@@ -143,6 +143,7 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, i
 void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);
+long int getRtcOffset();
 void printLocalTime();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);

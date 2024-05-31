@@ -13,7 +13,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"alarm\": [\n        [\n            {\n                \"weekday\": 32,\n                \"hour\": 20,\n                \"minute\": 31,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 32,\n                \"hour\": 20,\n                \"minute\": 32,\n                \"status\": 1\n            }\n        ] \n    ]\n}",
+					"raw": "{\n    \"alarm\": [\n        [\n            {\n                \"weekday\": 64,\n                \"hour\": 21,\n                \"minute\": 32,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 64,\n                \"hour\": 21,\n                \"minute\": 36,\n                \"status\": 1\n            }\n        ] \n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -55,42 +55,6 @@
 			"response": []
 		},
 		{
-			"name": "http://{{hostname}}/api/pump",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"pump\": 0,\n    \"value\": \"on\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": "http://{{hostname}}/api/pump"
-			},
-			"response": []
-		},
-		{
-			"name": "http://{{hostname}}/api/valve",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"pin\": 0,\n    \"value\": \"off\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": "http://{{hostname}}/api/valve"
-			},
-			"response": []
-		},
-		{
 			"name": "http://{{hostname}}/api/systeminfo",
 			"request": {
 				"method": "GET",
@@ -105,6 +69,90 @@
 				"method": "GET",
 				"header": [],
 				"url": "http://{{hostname}}/api/logs"
+			},
+			"response": []
+		},
+		{
+			"name": "http://water-tank.local/api/heartbeat",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://water-tank.local/api/heartbeat"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/settings",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"hostname\": \"indoor-robot\",\n    \"id\": 0\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://192.168.0.205/api/settings"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/settings",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"id\": 0,\n    \"hostname\": \"indoor\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/settings"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/plants",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"plants\": [\n        {\n            \"id\": 1,\n            \"size\": 20,\n            \"status\": 1\n        },\n        {\n            \"id\": 2,\n            \"size\": 20,\n            \"status\": 0\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/plants"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/plants",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"plants\": [\n        {\n            \"id\": 1,\n            \"size\": 20,\n            \"status\": 1\n        },\n        {\n            \"id\": 2,\n            \"size\": 20,\n            \"status\": 0\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://{{hostname}}/api/plants"
 			},
 			"response": []
 		}
@@ -134,7 +182,7 @@
 	"variable": [
 		{
 			"key": "hostname",
-			"value": "indoor_chico_01.local",
+			"value": "indoor.local",
 			"type": "string"
 		}
 	]
