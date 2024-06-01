@@ -46,7 +46,6 @@
 #define HOSTNAME_MAX_LENGTH               64      /* Max hostname length */
 #define SETTINGS_MAX_ALARMS               8       /* Max amount of settable alarms */
 #define SETTINGS_ALARM_STATES             2       /* 2 states on and off */
-#define SETTINGS_ALARM_DATA_STORE         4       /* Alarm store array: "weekday", "hour" and "minute" */
 #define SETTINGS_MAX_PLANTS               12      /* Maximun amount of allowed plants & valves */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
@@ -72,19 +71,22 @@ struct Settings {
   bool rebootOnWifiFail;
   uint8_t flowCalibrationFactor;
   Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES];
-  /* In case you need to set the values statically use these: */
-  // uint8_t alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES][SETTINGS_ALARM_DATA_STORE] = {
-  //  {
-  //    { 0b00000001, 14, 30, 0 }, 
-  //    { 0b00000001, 14, 30, 0 },
-  //  },
-  // };
   uint8_t maxPlants;
   Plant plant[SETTINGS_MAX_PLANTS];
   bool hasDisplay;
   bool hasRTC;
   bool hasEEPROM;
   bool hasMCP;
+};
+
+struct Network {
+  // Variables to hold the SSID and password
+  String ssid;
+  String password;
+};
+
+struct Config {
+  Network network;
 };
 
 void printI2cDevices(byte* devices = NULL);
@@ -108,3 +110,4 @@ void handleWifiConnectionError(String error, Settings settings, bool restart = f
 unsigned long getLogCount(const char* destinationFolder = "/logs");
 bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]);
 String getPlants(Settings settings);
+JsonDocument readConfig();

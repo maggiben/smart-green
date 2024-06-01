@@ -148,7 +148,7 @@ void setup() {
     server.on("/api/alarm", handleAlarm);
     server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
     server.on("/api/settings", HTTP_POST, handleSaveSettings);
-    server.on("/api/test-flow", HTTP_GET, handleTestFlow);
+    server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
     server.on("/api/logs", HTTP_GET, handleLogs);
     // Start Server
     server.begin();
@@ -386,6 +386,15 @@ void handleSystemInfo() {
   result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
   result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
+  JsonDocument config = readConfig();
+  if(!config.isNull()) {
+    result += "  \"config\": {\n";
+    result += "    \"network\": {\n";
+    result += "      \"ssid\": \"" + config["network"]["ssid"].as<String>() + "\",\n";
+    result += "      \"password\": \"" + config["network"]["password"].as<String>() + "\"\n";
+    result += "    }\n";
+    result += "  },\n";
+  }
   result += "  \"settings\": {\n";
   result += "    \"id\": " + String(settings.id) + ",\n";
   result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
@@ -397,13 +406,13 @@ void handleSystemInfo() {
   result += "  }\n";
   result += "}";
 
-
   TOTAL_MILLILITRES = 0;
   FLOW_METER_TOTAL_PULSE_COUNT = 0;
 
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
+  return;
 }
 
 void handleRoot() {
@@ -418,7 +427,7 @@ void handleRoot() {
   html += "<h1>ESP Web Server Example</h1>";
   html += "<button onclick=\"fetchData()\">Fetch Data</button>";
   html += "<pre id=\"data\"></pre>";
-  html += "<script>function fetchData() { fetch('http://indoor_chico_01.local/api/sysinfo').then(response => response.json()).then(data => document.getElementById('data').innerText = JSON.stringify(data)); }</script>";
+  html += "<script>function fetchData() { fetch('/api/systeminfo').then(response => response.json()).then(data => document.getElementById('data').innerText = JSON.stringify(data)); }</script>";
   html += "</body></html>";
   
   server.send(200, "text/html", html);
@@ -659,34 +668,10 @@ void waterPlants() {
   }
 }
 
-void handleTestFlow() {
-  waterPlant(0, 20, 250);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  waterPlant(1, 20, 250);
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  // waterPlant(2, 20, 250);
-  // vTaskDelay(500 / portTICK_PERIOD_MS);
-  // waterPlant(3, 20, 250);
+void handleTestAlarm() {
+  waterPlants();
   SERVER_RESPONSE_OK("{\"success\":true}");
   return;
-  mcp.writeGPIOAB(0b1111111111111110);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-  mcp.writeGPIOAB(0b1111101111111110);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-  pinMode(FLOW_METER_PIN, INPUT);
-  pinMode(FLOW_METER_PIN, INPUT_PULLUP);
-  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
-  (state to LOW state)*/
-  attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
-  TOTAL_MILLILITRES = 0;
-  for(uint8_t i = 0; i < 20; i++) {
-    calcFlow();
-  }
-  detachInterrupt(FLOW_METER_INTERRUPT);
-  
-  mcp.writeGPIOAB(0b1111111111111111);
-  SERVER_RESPONSE_OK("{\"success\":true}");
 }
 
 

@@ -134,7 +134,7 @@ bool setupMcp();
 void pulseCounter();
 void calcFlow();
 void displayFlow();
-void handleTestFlow();
+void handleTestAlarm();
 
 void beep(uint8_t uint8_t);
 // void errorMsg(String error, bool restart = true);

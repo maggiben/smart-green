@@ -97,12 +97,6 @@ String getAlarms(Settings settings) {
         result += "  \"hour\": " + String(settings.alarm[i][j].hour) + ",\n";
         result += "  \"minute\": " + String(settings.alarm[i][j].minute) + ",\n";
         result += "  \"status\": " + String(settings.alarm[i][j].status) + "\n";
-      // for (int k = 0; k < SETTINGS_ALARM_DATA_STORE; k++) {
-      //   result += String(settings.alarm[i][j][k]);
-      //   if (k < SETTINGS_ALARM_DATA_STORE - 1) {
-      //     result += ",";
-      //   }
-      // }
 
       result += "}";
       if (j < SETTINGS_ALARM_STATES - 1) {
@@ -440,30 +434,6 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
       alarm[alarmIndex][i].hour = hour;
       alarm[alarmIndex][i].minute = minute;
       alarm[alarmIndex][i].status = status;
-
-      // JsonArray alarmSetting = alarmData[i].as<JsonArray>();
-      // if (alarmSetting.size() != SETTINGS_ALARM_DATA_STORE) {
-      //   TRACE("Invalid alarm format\n");
-      //   return false;
-      // }
-
-      // uint8_t weekday = alarmSetting[0];
-      // uint8_t hour = alarmSetting[1];
-      // uint8_t minute = alarmSetting[2];
-      // uint8_t status = alarmSetting[3];
-
-      // // Validate hour, minute, and active values
-      // if (hour > 23 || minute > 59 || status > 1) {
-      //   TRACE("Invalid alarm settings\n");
-      //   return false;
-      // }
-
-      // return false;
-      // // Store the alarm settings
-      // alarm[alarmIndex][i].weekday = weekday;
-      // alarm[alarmIndex][i].hour = hour;
-      // alarm[alarmIndex][i].minute = minute;
-      // alarm[alarmIndex][i].status = status;
     }
   }
   return true;
@@ -567,4 +537,39 @@ void handleWifiConnectionError(String error, Settings settings, bool restart) {
     vTaskDelay(150 / portTICK_PERIOD_MS);
     ESP.restart();
   }
+}
+
+
+JsonDocument readConfig() {
+  JsonDocument doc;
+  if(!initSDCard()) {
+    return doc;
+  };
+
+  File configFile = SD.open("/config.json");
+
+  if (!configFile) {
+    TRACE("Failed to open config file\n");
+    return doc;
+  }
+
+  // Read the file content into a string
+  String jsonString = "";
+  while (configFile.available()) {
+    jsonString += configFile.readString();
+  }
+  configFile.close();
+
+  // Deserialize the JSON document
+  DeserializationError error = deserializeJson(doc, jsonString);
+  if (error) {
+    TRACE("deserializeJson() failed: %s\n", error.c_str());
+    return doc;
+  }
+
+  // Extract the SSID and password
+  TRACE("READ CONFIG ssid: %s\n", doc["network"]["ssid"].as<String>().c_str());
+  TRACE("READ CONFIG password: %s\n", doc["network"]["password"].as<String>().c_str());
+  
+  return doc;
 }
