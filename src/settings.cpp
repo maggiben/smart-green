@@ -573,3 +573,62 @@ JsonDocument readConfig() {
   
   return doc;
 }
+
+String* scanWifiNetworks() {
+  int n = WiFi.scanNetworks();
+  String* ssids = new String[n];
+  if (n == 0) {
+    TRACE("No networks found.\n");
+  } else {
+    // Allocate memory for SSID array
+    TRACE("%d networks found: \n", n);
+    for (int i = 0; i < n; ++i) {
+      TRACE("%d: %s (%d dBm) %s\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i), (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "encrypted");
+      ssids[i] = WiFi.SSID(i);
+      vTaskDelay(75 / portTICK_PERIOD_MS);
+    }
+  }
+  return ssids;
+}
+
+
+const char* getResetReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  const char* result;
+  switch (reason) {
+    case ESP_RST_POWERON:
+      result = "Power on reset";
+      break;
+    case ESP_RST_EXT:
+      result = "External reset";
+      break;
+    case ESP_RST_SW:
+      result = "Software reset";
+      break;
+    case ESP_RST_PANIC:
+      result = "Panic reset";
+      break;
+    case ESP_RST_INT_WDT:
+      result = "Interrupt watchdog reset";
+      break;
+    case ESP_RST_TASK_WDT:
+      result = "Task watchdog reset";
+      break;
+    case ESP_RST_WDT:
+      result = "Other watchdog reset";
+      break;
+    case ESP_RST_DEEPSLEEP:
+      result = "Deep sleep reset";
+      break;
+    case ESP_RST_BROWNOUT:
+      result = "Brownout reset";
+      break;
+    case ESP_RST_SDIO:
+      result = "SDIO reset";
+      break;
+    default:
+      result = "Unknown reset reason";
+      break;
+  }
+  return result;
+}

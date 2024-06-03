@@ -34,6 +34,7 @@
  **/
 
 #pragma once
+#define VERSION                    "1.0.0"
 // WiFi Credentials
 #define WIFI_SSID                   "TP-Link_42B4"
 #define WIFI_PASSWORD               "pirulo123"

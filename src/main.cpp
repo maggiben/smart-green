@@ -291,7 +291,7 @@ void displayTime() {
   display.println(time);
   display.print("IP: "); display.println(ip);
   display.print("Temp: "); display.print(rtc.getTemperature());  display.println(" C");
-  // display.print("C: "); display.println(rtc.getTemperature());
+  display.print("Ver: "); display.println(VERSION);
   
   display.setCursor(0, 0);
   display.display(); // actually display all of the above
@@ -354,6 +354,7 @@ void handleSystemInfo() {
   result += "  \"chipRevision\": " + String(ESP.getChipRevision()) + ",\n";
   result += "  \"flashSize\": " + String(ESP.getFlashChipSize()) + ",\n";
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
+  result += "  \"heapSize\": " + String(esp_get_free_heap_size()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   if (settings.hasRTC) {
@@ -371,6 +372,7 @@ void handleSystemInfo() {
     }
   }
   result += "  \"uptime\": " + String(millis()) + ",\n";
+  result += "  \"resetReason\": \"" + String(getResetReason()) + "\",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   // result += "  \"i2cBusDevices:\": " + String(getI2cDeviceList()) + ",\n";
   if (settings.hasMCP) {
@@ -686,12 +688,6 @@ void handlePlants() {
     server.sendHeader("Cache-Control", "no-cache");
     SERVER_RESPONSE_OK(result);
   } else if (server.method() == HTTP_POST) {
-    JsonDocument json;
-    
-    if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
-      return;
-    }
 
     if(!setupPlants(server, settings.plant)) {
       SERVER_RESPONSE_ERROR(500, "Serialization error");

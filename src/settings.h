@@ -111,3 +111,4 @@ unsigned long getLogCount(const char* destinationFolder = "/logs");
 bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]);
 String getPlants(Settings settings);
 JsonDocument readConfig();
+const char* getResetReason();
