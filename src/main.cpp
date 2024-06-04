@@ -145,6 +145,9 @@ void setup() {
     // REST Endpoint (Only if Connected)
     server.on("/", handleRoot);
     server.on("/api/plants", handlePlants);
+    server.on("/api/beep", []{
+      beep(2, 150);
+    });
     server.on("/api/alarm", handleAlarm);
     server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
     server.on("/api/settings", HTTP_POST, handleSaveSettings);

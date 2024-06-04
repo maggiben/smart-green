@@ -484,14 +484,14 @@ bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
   return true;
 }
 
-void beep(uint8_t times) {
+void beep(uint8_t times, unsigned long delay) {
   TRACE("beeping times: %d\n", times);
   pinMode(BUZZER_PIN, OUTPUT);
   for(uint8_t i = 0; i < times; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay(delay / portTICK_PERIOD_MS);
     digitalWrite(BUZZER_PIN, LOW);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay(delay / portTICK_PERIOD_MS);
   }
 }
 

@@ -136,7 +136,6 @@ void calcFlow();
 void displayFlow();
 void handleTestAlarm();
 
-void beep(uint8_t uint8_t);
 // void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
