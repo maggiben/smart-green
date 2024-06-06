@@ -89,9 +89,6 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire); // Address 0x3C
 // i2c Port extender
 Adafruit_MCP23X17 mcp; // Address 0x20
 
-// Device IP Address
-IPAddress ip;
-
 // Need a WebServer for http access on port 80.
 WebServer server(80);
 

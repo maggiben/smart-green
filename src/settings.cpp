@@ -632,3 +632,20 @@ const char* getResetReason() {
   }
   return result;
 }
+
+String uptimeStr() {
+  // Get the uptime in milliseconds
+  unsigned long millisec = millis();
+
+  // Calculate hours, minutes, and seconds
+  unsigned long totalSeconds = millisec / 1000;
+  unsigned long hours = totalSeconds / 3600;
+  unsigned long minutes = (totalSeconds % 3600) / 60;
+  unsigned long seconds = totalSeconds % 60;
+
+  // Format the uptime as "hh:mm:ss"
+  char uptime[9]; // Buffer to hold the formatted string
+  snprintf(uptime, sizeof(uptime), "%02lu:%02lu:%02lu", hours, minutes, seconds);
+
+  return String(uptime);
+}

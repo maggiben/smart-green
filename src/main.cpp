@@ -63,8 +63,9 @@ void setup() {
   Wire.beginTransmission(EEPROM_ADDRESS);
   if (Wire.endTransmission() != 0) {
     settings.hasEEPROM = false;
-    beep(2);
+    beep(3, 250);
     TRACE("EEPROM not found or not ready\n");
+    ESP.restart();
   } else {
     // Init EEPROM chip in the RTC module
     if (EEPROM.begin(EEPROM_SIZE)) {
@@ -73,13 +74,15 @@ void setup() {
       // TRACE("Settings: %s now: %d\n", settings.hostname, rtc.now().unixtime());
     } else {
       settings.hasEEPROM = false;
+      beep(3, 250);
       TRACE("EEPROM not Working\n");
+      ESP.restart();
     };
   }
 
   if (!rtc.begin()) {
     TRACE("Couldn't find RTC\n");
-    beep(2);
+    beep(2, 250);
     settings.hasRTC = false;
     // Serial.flush();
     // abort();
@@ -119,7 +122,7 @@ void setup() {
   TRACE("Hostname %s\n", settings.hostname);
 
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
-    ip = WiFi.localIP();
+    IPAddress ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Connected: "); PRINT(ip); TRACE("\n");
 
@@ -292,9 +295,9 @@ void displayTime() {
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   display.println(time);
-  display.print("IP: "); display.println(ip);
+  display.print("IP: "); display.println(WiFi.localIP());
   display.print("Temp: "); display.print(rtc.getTemperature());  display.println(" C");
-  display.print("Ver: "); display.println(VERSION);
+  display.printf("Uptime: %s\n", uptimeStr().c_str()); display.println();
   
   display.setCursor(0, 0);
   display.display(); // actually display all of the above
@@ -591,15 +594,11 @@ void handleSaveSettings() {
 
 void loop() {
   server.handleClient();
-  // time_t now = time(nullptr);
-  // struct tm *timeinfo;
-  // timeinfo = localtime(&now);
-  // TRACE("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-  // vTaskDelay(1000 / portTICK_PERIOD_MS);
-
   // Handle OTA updates
   ArduinoOTA.handle();
-
+  // Delay or die
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+  
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
