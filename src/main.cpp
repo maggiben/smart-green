@@ -151,6 +151,7 @@ void setup() {
     server.on("/api/beep", []{
       beep(2, 150);
     });
+    server.onNotFound(handleNotFound);
     server.on("/api/alarm", handleAlarm);
     server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
     server.on("/api/settings", HTTP_POST, handleSaveSettings);
@@ -362,6 +363,7 @@ void handleSystemInfo() {
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
   result += "  \"heapSize\": " + String(esp_get_free_heap_size()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
+  result += "  \"hotspots\": " + scanWifiNetworks() + ",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   if (settings.hasRTC) {
     result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
@@ -377,7 +379,7 @@ void handleSystemInfo() {
       result += "  \"timestamp\": " + String(now) + ",\n";
     }
   }
-  result += "  \"uptime\": " + String(millis()) + ",\n";
+  result += "  \"uptime\": \"" + uptimeStr() + "\",\n";
   result += "  \"resetReason\": \"" + String(getResetReason()) + "\",\n";
   result += "  \"timezone\": \"" + String(TIMEZONE) + "\",\n";
   // result += "  \"i2cBusDevices:\": " + String(getI2cDeviceList()) + ",\n";
@@ -409,6 +411,8 @@ void handleSystemInfo() {
   result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
   result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
+  uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
+  result += "    \"nextAlarm\": \"" + addTimeInterval(minTimeToNextAlarm) + "\",\n";
   result += "    \"alarms\": " + getAlarms(settings) + ",\n";
   result += "    \"plants\": " + getPlants(settings) + "\n";
   result += "  }\n";
@@ -417,19 +421,12 @@ void handleSystemInfo() {
   TOTAL_MILLILITRES = 0;
   FLOW_METER_TOTAL_PULSE_COUNT = 0;
 
-  server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
   SERVER_RESPONSE_OK(result);
   return;
 }
 
 void handleRoot() {
-  // Set CORS headers
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Max-Age", "10000");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  
   // Send the HTML page
   String html = "<!DOCTYPE html><html><body>";
   html += "<h1>ESP Web Server Example</h1>";
@@ -562,6 +559,11 @@ void handleLogs() {
   return;
 }
 
+
+void handleNotFound() {
+  SERVER_RESPONSE_ERROR(404, "Not Found");
+}
+
 void handleSaveSettings() {
   if (server.method() == HTTP_POST) {
     if (server.hasArg("plain") == false) {
@@ -594,10 +596,12 @@ void handleSaveSettings() {
 
 void loop() {
   server.handleClient();
+  // Delay or die
+  vTaskDelay(250 / portTICK_PERIOD_MS);
   // Handle OTA updates
   ArduinoOTA.handle();
   // Delay or die
-  vTaskDelay(500 / portTICK_PERIOD_MS);
+  vTaskDelay(250 / portTICK_PERIOD_MS);
   
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());

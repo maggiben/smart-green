@@ -344,6 +344,51 @@ int getActiveAlarmId(Settings settings, DateTime now) {
   return -1;
 }
 
+// Helper function to calculate seconds from hours, minutes, and seconds
+uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds) {
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+uint32_t getNextAlarmTime(Settings settings, DateTime now) {
+  uint32_t minTimeToNextAlarm = UINT_MAX; // Initialize with maximum possible value
+  uint32_t currentTimeInSeconds = toSeconds(now.hour(), now.minute(), now.second());
+  uint8_t currentDayOfWeek = now.dayOfTheWeek();
+
+  for (uint8_t i = 0; i < SETTINGS_MAX_ALARMS; i++) {
+    if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
+      uint8_t alarmWeekdayMask = settings.alarm[i][0].weekday;
+      uint8_t startAlarmHour = settings.alarm[i][0].hour;
+      uint8_t startAlarmMinute = settings.alarm[i][0].minute;
+      uint8_t startAlarmSecond = 0; // Assuming seconds are not stored, default to 0
+
+      uint32_t alarmTimeInSeconds = toSeconds(startAlarmHour, startAlarmMinute, startAlarmSecond);
+
+      for (uint8_t dayOffset = 0; dayOffset < 7; dayOffset++) {
+        uint8_t dayToCheck = (currentDayOfWeek + dayOffset) % 7;
+        uint8_t dayMask = 1 << dayToCheck;
+
+        if ((alarmWeekdayMask & dayMask) != 0) {
+          uint32_t timeToNextAlarm;
+
+          if (dayOffset == 0 && alarmTimeInSeconds > currentTimeInSeconds) {
+            // Same day, future time
+            timeToNextAlarm = alarmTimeInSeconds - currentTimeInSeconds;
+          } else {
+            // Future days
+            timeToNextAlarm = (86400 * dayOffset) + alarmTimeInSeconds - currentTimeInSeconds;
+          }
+
+          if (timeToNextAlarm < minTimeToNextAlarm) {
+            minTimeToNextAlarm = timeToNextAlarm;
+          }
+        }
+      }
+    }
+  }
+
+  return minTimeToNextAlarm;
+}
+
 bool isAlarmOn(Settings settings, DateTime now) {
   if (getActiveAlarmId(settings, now) > -1) {
     return true;
@@ -574,9 +619,9 @@ JsonDocument readConfig() {
   return doc;
 }
 
-String* scanWifiNetworks() {
+String scanWifiNetworks() {
   int n = WiFi.scanNetworks();
-  String* ssids = new String[n];
+  String hotspots ="[\n";
   if (n == 0) {
     TRACE("No networks found.\n");
   } else {
@@ -584,13 +629,21 @@ String* scanWifiNetworks() {
     TRACE("%d networks found: \n", n);
     for (int i = 0; i < n; ++i) {
       TRACE("%d: %s (%d dBm) %s\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i), (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "encrypted");
-      ssids[i] = WiFi.SSID(i);
+      hotspots += "  {\n";
+      hotspots += "    \"ssid\": \"" + WiFi.SSID(i) + "\",\n";
+      hotspots += "    \"rssi\": " + String(WiFi.RSSI(i)) + ",\n";
+      hotspots += "    \"encryptionType\": " + String(WiFi.encryptionType(i)) + "\n";
+      if ((i + 1) < n) {
+        hotspots += "  },\n";
+      } else {
+        hotspots += "  }\n";
+      }
       vTaskDelay(75 / portTICK_PERIOD_MS);
     }
   }
-  return ssids;
+  hotspots += "]";
+  return hotspots;
 }
-
 
 const char* getResetReason() {
   esp_reset_reason_t reason = esp_reset_reason();
@@ -649,3 +702,52 @@ String uptimeStr() {
 
   return String(uptime);
 }
+
+// Function to add time interval to the current time
+String addTimeInterval(uint32_t seconds) {
+  // Get current time
+  time_t now;
+  time(&now);
+
+  // Add the total seconds to the current time
+  time_t futureTime = now + seconds;
+
+  // Format the future time as a string
+  struct tm *timeinfo = localtime(&futureTime);
+  char buffer[20];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+  return String(buffer);
+}
+
+bool upload(WebServer &server) {
+  String path = "/www";
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    TRACE("Start uploading: %s\n", upload.filename.c_str());
+    if (!SD.exists(path)) {
+      TRACE("Creating directory: %s\n", path.c_str());
+      SD.mkdir(path);
+    }
+    File file = SD.open(path + "/" + upload.filename, FILE_WRITE);
+    if (!file) {
+      TRACE("Failed to open file for writing\n");
+      return false;
+    }
+    upload.totalSize += file.size();
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    File file = SD.open(path + "/" + upload.filename, FILE_WRITE);
+    if (file) {
+      size_t bytesWritten = file.write(upload.buf, upload.currentSize);
+      if (bytesWritten != upload.currentSize) {
+        TRACE("Write error\n");
+      }
+      file.close();
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    TRACE("Upload finished: %s, %u bytes\n", upload.filename.c_str(), upload.totalSize);
+    return true;
+  }
+  return false;
+}
+

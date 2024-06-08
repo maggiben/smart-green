@@ -157,3 +157,4 @@ void displayTime();
 void pumpWater(void *parameter);
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
+void handleNotFound();
