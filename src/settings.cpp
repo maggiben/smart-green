@@ -341,9 +341,7 @@ int getActiveAlarmId(Settings settings, DateTime now) {
           }
         }
       }
-      return -1;
     }
-    return -1;
   }
   return -1;
 }

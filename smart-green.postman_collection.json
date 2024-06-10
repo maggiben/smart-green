@@ -13,7 +13,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"alarm\": [\n        [\n            {\n                \"weekday\": 64,\n                \"hour\": 21,\n                \"minute\": 32,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 64,\n                \"hour\": 21,\n                \"minute\": 36,\n                \"status\": 1\n            }\n        ] \n    ]\n}",
+					"raw": "{\n    \"alarm\": [\n        [\n            {\n                \"weekday\": 1,\n                \"hour\": 15,\n                \"minute\": 30,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 1,\n                \"hour\": 15,\n                \"minute\": 31,\n                \"status\": 1\n            }\n        ], [\n            {\n                \"weekday\": 2,\n                \"hour\": 14,\n                \"minute\": 5,\n                \"status\": 1\n            },\n            {\n                \"weekday\": 2,\n                \"hour\": 14,\n                \"minute\": 6,\n                \"status\": 1\n            }\n        ]\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -34,7 +34,16 @@
 			"response": []
 		},
 		{
-			"name": "http://{{hostname}}/api/test-flow",
+			"name": "http://{{hostname}}/api/beep",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://{{hostname}}/api/beep"
+			},
+			"response": []
+		},
+		{
+			"name": "http://{{hostname}}/api/test-alarm",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -50,7 +59,7 @@
 						}
 					}
 				},
-				"url": "http://{{hostname}}/api/test-flow"
+				"url": "http://{{hostname}}/api/test-alarm"
 			},
 			"response": []
 		},
@@ -124,7 +133,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"plants\": [\n        {\n            \"id\": 1,\n            \"size\": 20,\n            \"status\": 1\n        },\n        {\n            \"id\": 2,\n            \"size\": 20,\n            \"status\": 0\n        }\n    ]\n}",
+					"raw": "{\n    \"plants\": [\n        {\n            \"id\": 0,\n            \"size\": 20,\n            \"status\": 1\n        },\n        {\n            \"id\": 1,\n            \"size\": 20,\n            \"status\": 1\n        },\n        {\n            \"id\": 2,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 3,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 4,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 5,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 6,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 7,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 8,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 9,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 10,\n            \"size\": 20,\n            \"status\": 0\n        },\n        {\n            \"id\": 11,\n            \"size\": 20,\n            \"status\": 0\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
