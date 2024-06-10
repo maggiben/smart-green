@@ -116,4 +116,4 @@ String uptimeStr();
 String scanWifiNetworks();
 uint32_t getNextAlarmTime(Settings settings, DateTime now);
 uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds);
-String addTimeInterval(uint32_t seconds);
+String addTimeInterval(uint32_t seconds, DateTime now);

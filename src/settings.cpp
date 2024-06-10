@@ -261,6 +261,10 @@ bool saveLog(DateTime now, String name, int id, int milliliters, int duration, c
   if (!createDirectoryIfNotExists(destinationFolder)) {
     return false;
   }
+  if (!SD.exists(destinationFolder)) {
+    TRACE("Creating directory: %s\n", destinationFolder);
+    SD.mkdir(destinationFolder);
+  }
   String fileName = String(destinationFolder) + "/log-" + String(now.unixtime()) + ".csv";
   File file = SD.open(fileName, FILE_WRITE);
   
@@ -704,50 +708,25 @@ String uptimeStr() {
 }
 
 // Function to add time interval to the current time
-String addTimeInterval(uint32_t seconds) {
-  // Get current time
-  time_t now;
-  time(&now);
-
+String addTimeInterval(uint32_t seconds, DateTime now) {
   // Add the total seconds to the current time
-  time_t futureTime = now + seconds;
+  time_t futureTime;
+  TRACE("unixtime: %lu\n", now.unixtime());
+  TRACE("seconds: %lu\n", seconds);
+  TRACE("FutureTimeSec: %lu\n", futureTime);
 
-  // Format the future time as a string
-  struct tm *timeinfo = localtime(&futureTime);
+  tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    TRACE("Failed to obtain time\n");
+  }
+
+  futureTime = mktime(&timeinfo) + seconds;
+
+  // Convert to Unix time
   char buffer[20];
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&futureTime));
+  TRACE("FutureTime: %s\n", buffer);
 
   return String(buffer);
-}
-
-bool upload(WebServer &server) {
-  String path = "/www";
-  HTTPUpload& upload = server.upload();
-  if (upload.status == UPLOAD_FILE_START) {
-    TRACE("Start uploading: %s\n", upload.filename.c_str());
-    if (!SD.exists(path)) {
-      TRACE("Creating directory: %s\n", path.c_str());
-      SD.mkdir(path);
-    }
-    File file = SD.open(path + "/" + upload.filename, FILE_WRITE);
-    if (!file) {
-      TRACE("Failed to open file for writing\n");
-      return false;
-    }
-    upload.totalSize += file.size();
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    File file = SD.open(path + "/" + upload.filename, FILE_WRITE);
-    if (file) {
-      size_t bytesWritten = file.write(upload.buf, upload.currentSize);
-      if (bytesWritten != upload.currentSize) {
-        TRACE("Write error\n");
-      }
-      file.close();
-    }
-  } else if (upload.status == UPLOAD_FILE_END) {
-    TRACE("Upload finished: %s, %u bytes\n", upload.filename.c_str(), upload.totalSize);
-    return true;
-  }
-  return false;
 }
 

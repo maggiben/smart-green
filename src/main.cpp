@@ -157,6 +157,7 @@ void setup() {
     server.on("/api/settings", HTTP_POST, handleSaveSettings);
     server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
     server.on("/api/logs", HTTP_GET, handleLogs);
+
     // Start Server
     server.begin();
 
@@ -172,6 +173,7 @@ void setup() {
 
   // Good To Go!
   beep(1);
+  vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
 void pulseCounter() {
@@ -288,8 +290,7 @@ void printRtcTime() {
 void displayTime() {
   // text display tests
   DateTime now = rtc.now();
-  char * time = (char *) malloc(sizeof(char) * 64);
-  memset(time, 0, sizeof(char) * 64);
+  char time[64];
   sprintf(time, "TIME: %02d:%02d:%02d A:%d", now.hour(), now.minute(), now.second(), getActiveAlarmId(settings, rtc.now()));
   display.clearDisplay();
   display.setTextSize(1);
@@ -302,7 +303,6 @@ void displayTime() {
   
   display.setCursor(0, 0);
   display.display(); // actually display all of the above
-  free(time);
 }
 
 bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pause) {
@@ -327,10 +327,13 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
   WiFi.persistent(true);
 
   // Initialize mDNS
-  while (!MDNS.begin(settings.hostname)) {
-    TRACE("Error setting up MDNS responder!\n");
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-  }
+  TRACE("Setting up MDNS responder!\n");
+  i = 0;
+  do {
+    vTaskDelay(pause / portTICK_PERIOD_MS);
+    TRACE(".");
+    i++;
+  } while (!MDNS.begin(settings.hostname) && i < max_tries);
 
   return isConnected();
 }
@@ -412,7 +415,8 @@ void handleSystemInfo() {
   result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
   result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
   uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
-  result += "    \"nextAlarm\": \"" + addTimeInterval(minTimeToNextAlarm) + "\",\n";
+  result += "    \"nextAlarmSecs\":" + String(minTimeToNextAlarm) + ",\n";
+  result += "    \"nextAlarm\": \"" + addTimeInterval(minTimeToNextAlarm, rtc.now()) + "\",\n";
   result += "    \"alarms\": " + getAlarms(settings) + ",\n";
   result += "    \"plants\": " + getPlants(settings) + "\n";
   result += "  }\n";
@@ -480,11 +484,6 @@ void handleAlarm() {
 }
 
 void handleLogs() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Max-Age", "10000");
-  server.sendHeader("Access-Control-Allow-Methods", "GET, POST");
-  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (server.method() == HTTP_GET) {
     String result;
     String contents = "";
@@ -559,7 +558,6 @@ void handleLogs() {
   return;
 }
 
-
 void handleNotFound() {
   SERVER_RESPONSE_ERROR(404, "Not Found");
 }
@@ -597,11 +595,11 @@ void handleSaveSettings() {
 void loop() {
   server.handleClient();
   // Delay or die
-  vTaskDelay(250 / portTICK_PERIOD_MS);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   // Handle OTA updates
   ArduinoOTA.handle();
   // Delay or die
-  vTaskDelay(250 / portTICK_PERIOD_MS);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());
@@ -660,6 +658,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
       break;
     }
   }
+  saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
   // TOTAL_MILLILITRES = 0;
   FLOW_METER_PULSE_COUNT = 0;
   detachInterrupt(FLOW_METER_INTERRUPT);
