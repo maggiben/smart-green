@@ -529,18 +529,6 @@ void handleLogs() {
     SERVER_RESPONSE_OK(result);
     return;
   } else if (server.method() == HTTP_POST) {
-    // JsonDocument json;
-    
-    // if (deserializeJson(json, server.arg("plain"))) {
-    //   SERVER_RESPONSE_ERROR(400, "Invalid JSON");
-    //   return;
-    // }
-
-    // setupAlarms(server, settings.alarm);
-      
-    // settings.updatedOn = rtc.now().unixtime();
-    // EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
-    // EEPROM.commit();
 
     String result;
     // String alarm = printAlarm(settings);
