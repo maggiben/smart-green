@@ -105,11 +105,9 @@ void setup() {
 
   printI2cDevices();
 
-#if USE_SD_CARD == true
   if(!initSDCard()) {
     TRACE("SD not working\n");
   };
-#endif
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -123,48 +121,16 @@ void setup() {
 
   TRACE("Hostname %s\n", settings.hostname);
 
-#if ONLINE == true
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Connected: "); PRINT(ip); TRACE("\n");
-
-    // // Set up the OTA end callback
-    ArduinoOTA.onEnd([]() {
-      beep(4);
-      TRACE("OTA update successful, rebooting...\n");
-      vTaskDelay(500 / portTICK_PERIOD_MS);
-      ESP.restart();
-    });
-
-    ArduinoOTA.setHostname(settings.hostname);
-    // Initialize OTA
-    ArduinoOTA.begin();
 
     // Ask for the current time using NTP request builtin into ESP firmware.
     TRACE("Setup ntp...\n");
     initTime(TIMEZONE);   // Set for Melbourne/AU
     printLocalTime();
 
-    // Enable CORS header in webserver results
-    server.enableCORS(true);
-    // REST Endpoint (Only if Connected)
-    server.on("/", handleRoot);
-    server.on("/api/plants", handlePlants);
-    server.on("/api/beep", []{
-      beep(2, 150);
-    });
-    server.onNotFound(handleNotFound);
-    server.on("/api/alarm", handleAlarm);
-    server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
-    server.on("/api/settings", HTTP_POST, handleSaveSettings);
-    server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
-    server.on("/api/logs", HTTP_GET, handleLogs);
-
-    // Start Server
-    server.begin();
-
-    TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
     if (settings.hasDisplay) {
       displayTime();
     }
@@ -173,15 +139,37 @@ void setup() {
     beep(2);  
     handleWifiConnectionError("WiFi connection error", settings);
   }
+
+  i2c_mutex = xSemaphoreCreateMutex();
+  if (i2c_mutex == NULL) {
+    TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
+  }
+
+  
+  // Create a task for handling OTA
+  xTaskCreatePinnedToCore(
+    handleOTATask,          // Function to implement the task
+    "OTATask",              // Name of the task
+    24000,                  // Stack size in words
+    NULL,                   // Task input parameter
+    PRIORITY_LOW,           // Priority of the task
+    &otaTaskHandle,         // Task handle
+    1                       // Core where the task should run
+  );
+
+  // Create a task for handling Web Server
+  xTaskCreatePinnedToCore(
+    handleWebServerTask,    // Function to implement the task
+    "WebServerTask",        // Name of the task
+    24000,                  // Stack size in words
+    NULL,                   // Task input parameter
+    PRIORITY_MEDIUM,        // Priority of the task
+    &webServerTaskHandle,   // Task handle
+    1                       // Core where the task should run
+  );
   // Good To Go!
   beep(1);
   vTaskDelay(100 / portTICK_PERIOD_MS);
-#else
-  printLocalTime();
-  beep(2);
-  vTaskDelay(100 / portTICK_PERIOD_MS);
-#endif
-  
 }
 
 
@@ -402,14 +390,12 @@ void handleSystemInfo() {
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
   result += "  },\n";
-#if USE_SD_CARD == true
   result += "  \"sdcard\": {\n";
   result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
   result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
   result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
   result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
-#endif
   JsonDocument config = readConfig();
   if(!config.isNull()) {
     result += "  \"config\": {\n";
@@ -592,34 +578,76 @@ void handleSaveSettings() {
 }
 
 void loop() {
-#if ONLINE == true
-  server.handleClient();
-  // Delay or die
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  // Handle OTA updates
-  ArduinoOTA.handle();
-  // Delay or die
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-#else
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-#endif
-
+  TaskHandle_t alarmTask;
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
     if (activateAlarm > -1 && !IS_ALARM_ON) {
       IS_ALARM_ON = true;
       xTaskCreate(
-        pumpWater,          // Task function
-        "AlarmTask",        // Task name
-        8192,               // Stack size (bytes)
-        NULL,               // Task parameter
-        1,                  // Task priority
-        NULL                // Task handle
+        pumpWater,            // Task function
+        "AlarmTask",          // Task name
+        8192,                 // Stack size (bytes)
+        NULL,                 // Task parameter
+        tskIDLE_PRIORITY + 4, // Task priority (very high)
+        &alarmTask            // Task handle
       );
     } else if (activateAlarm <= -1 || !IS_ALARM_ON && settings.hasDisplay) {
-      displayTime();
+      if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) { 
+        displayTime();
+      }
+      xSemaphoreGive(i2c_mutex);
     }
+  }
+}
+
+// Task for handling OTA
+void handleOTATask(void * parameter) {
+  // // Set up the OTA end callback
+  ArduinoOTA.onEnd([]() {
+    beep(4);
+    TRACE("OTA update successful, rebooting...\n");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    ESP.restart();
+  });
+
+  ArduinoOTA.setHostname(settings.hostname);
+  // Initialize OTA
+  ArduinoOTA.begin();
+  for(;;) {
+    ArduinoOTA.handle();
+    vTaskDelay(10 / portTICK_PERIOD_MS ); // Give some time for the other tasks
+  }
+}
+
+// Task for handling Web Server
+void handleWebServerTask(void * parameter) {
+  // Enable CORS header in webserver results
+  server.enableCORS(true);
+  // REST Endpoint (Only if Connected)
+  server.onNotFound(handleNotFound);
+  server.on("/", handleRoot);
+  server.on("/api/plants", handlePlants);
+  server.on("/api/beep", []{
+    beep(2, 150);
+  });
+  server.on("/api/alarm", handleAlarm);
+  server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
+  server.on("/api/settings", HTTP_POST, handleSaveSettings);
+  server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
+  server.on("/api/logs", HTTP_GET, handleLogs);
+
+  // Start Server
+  server.begin();
+
+  TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+  
+  for(;;) {
+    if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) {
+      server.handleClient();
+    }
+    xSemaphoreGive(i2c_mutex);
+    vTaskDelay(150 / portTICK_PERIOD_MS); // Give some time for the other tasks
   }
 }
 
