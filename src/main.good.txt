@@ -105,11 +105,9 @@ void setup() {
 
   printI2cDevices();
 
-#if USE_SD_CARD == true
   if(!initSDCard()) {
     TRACE("SD not working\n");
   };
-#endif
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -123,7 +121,6 @@ void setup() {
 
   TRACE("Hostname %s\n", settings.hostname);
 
-#if ONLINE == true
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
@@ -173,17 +170,11 @@ void setup() {
     beep(2);  
     handleWifiConnectionError("WiFi connection error", settings);
   }
+
   // Good To Go!
   beep(1);
   vTaskDelay(100 / portTICK_PERIOD_MS);
-#else
-  printLocalTime();
-  beep(2);
-  vTaskDelay(100 / portTICK_PERIOD_MS);
-#endif
-  
 }
-
 
 void pulseCounter() {
   // Increment the pulse counter
@@ -402,14 +393,12 @@ void handleSystemInfo() {
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
   result += "  },\n";
-#if USE_SD_CARD == true
   result += "  \"sdcard\": {\n";
   result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
   result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
   result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
   result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
-#endif
   JsonDocument config = readConfig();
   if(!config.isNull()) {
     result += "  \"config\": {\n";
@@ -604,7 +593,6 @@ void handleSaveSettings() {
 }
 
 void loop() {
-#if ONLINE == true
   server.handleClient();
   // Delay or die
   vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -612,10 +600,7 @@ void loop() {
   ArduinoOTA.handle();
   // Delay or die
   vTaskDelay(500 / portTICK_PERIOD_MS);
-#else
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-#endif
-
+  
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
@@ -673,9 +658,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
       break;
     }
   }
-#if USE_SD_CARD == true
   saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
-#endif
   // TOTAL_MILLILITRES = 0;
   FLOW_METER_PULSE_COUNT = 0;
   detachInterrupt(FLOW_METER_INTERRUPT);
@@ -697,6 +680,7 @@ void handleTestAlarm() {
   SERVER_RESPONSE_OK("{\"success\":true}");
   return;
 }
+
 
 void handlePlants() {
   if (server.method() == HTTP_GET) {

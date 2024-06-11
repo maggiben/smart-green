@@ -100,12 +100,16 @@ WebServer server(80);
   #define SERVER_RESPONSE_ERROR(code, error)  server.send(code, "application/json; charset=utf-8", String("{\"error\":\"") + error + "\"}")
 #endif
 
-#ifndef Task0
-  TaskHandle_t Task0;
+TaskHandle_t webServerTaskHandle;
+TaskHandle_t otaTaskHandle;
+// Use only core
+#if CONFIG_FREERTOS_UNICORE
+  static const BaseType_t app_cpu = 0;
+#else
+  static const BaseType_t app_cpu = 1;
 #endif
-#ifndef Task1
-  TaskHandle_t Task1;
-#endif
+
+BaseType_t result = pdFALSE;
 
 #ifndef IS_ALARM_ON
   volatile bool IS_ALARM_ON = false;
@@ -125,6 +129,14 @@ WebServer server(80);
 #ifndef DISPLAY_INFO
   #define DISPLAY_INFO
   byte DISPLAY_INFO_DATA = 0;
+#endif
+
+#ifndef ONLINE
+  #define ONLINE false
+#endif
+
+#ifndef USE_SD_CARD
+  #define USE_SD_CARD false
 #endif
 
 bool setupMcp();
