@@ -69,6 +69,10 @@ void setup() {
   } else {
     // Init EEPROM chip in the RTC module
     if (EEPROM.begin(EEPROM_SIZE)) {
+      // EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+      // EEPROM.commit();
+      // vTaskDelay(500 / portTICK_PERIOD_MS);
+      // beep(5, 150);
       // Read EEPROM settings
       EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
       // TRACE("Settings: %s now: %d\n", settings.hostname, rtc.now().unixtime());
@@ -119,16 +123,17 @@ void setup() {
     display.display();
   }
 
-  TRACE("Hostname %s\n", settings.hostname);
+  TRACE("settings.hostname %s\n", settings.hostname);
 
+#if defined(ONLINE)
   if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
-    TRACE("Connected: "); PRINT(ip); TRACE("\n");
+    TRACE("Wifi Connected: IP: %s - Hostname: %s\n", WiFi.localIP().toString().c_str(), WiFi.getHostname());
 
     // Ask for the current time using NTP request builtin into ESP firmware.
     TRACE("Setup ntp...\n");
-    initTime(TIMEZONE);   // Set for Melbourne/AU
+    initTime(TIMEZONE);
     printLocalTime();
 
     if (settings.hasDisplay) {
@@ -139,34 +144,38 @@ void setup() {
     beep(2);  
     handleWifiConnectionError("WiFi connection error", settings);
   }
+#endif
 
   i2c_mutex = xSemaphoreCreateMutex();
   if (i2c_mutex == NULL) {
     TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
   }
-
   
   // Create a task for handling OTA
+#if defined(ONLINE) && defined(ENABLE_OTA)
   xTaskCreatePinnedToCore(
     handleOTATask,          // Function to implement the task
-    "OTATask",              // Name of the task
-    24000,                  // Stack size in words
+    "OtaTask",              // Name of the task
+    46000,                  // Stack size in words
     NULL,                   // Task input parameter
     PRIORITY_LOW,           // Priority of the task
     &otaTaskHandle,         // Task handle
     1                       // Core where the task should run
   );
+#endif
 
-  // Create a task for handling Web Server
+  // // Create a task for handling Web Server
+#if defined(ONLINE) && defined(ENABLE_HTTP)
   xTaskCreatePinnedToCore(
     handleWebServerTask,    // Function to implement the task
     "WebServerTask",        // Name of the task
-    24000,                  // Stack size in words
+    46000,                  // Stack size in words
     NULL,                   // Task input parameter
     PRIORITY_MEDIUM,        // Priority of the task
     &webServerTaskHandle,   // Task handle
     1                       // Core where the task should run
   );
+#endif
   // Good To Go!
   beep(1);
   vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -305,15 +314,20 @@ void displayTime() {
 bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pause) {
   int i = 0;
   // allow to address the device by the given name e.g. http://webserver
-  WiFi.setHostname(settings.hostname);
+  // Set WiFi mode to Station (Client)
   WiFi.mode(WIFI_STA);
+  // Disconnect any existing WiFi connections
   WiFi.disconnect();
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Set the hostname
+  WiFi.setHostname(settings.hostname);
+
   
   #if defined(ARDUINO_ARCH_ESP8266)
     WiFi.forceSleepWake();
     delay(200);
   #endif
+  // Begin the WiFi connection
   WiFi.begin(ssid, password);
   do {
     vTaskDelay(pause / portTICK_PERIOD_MS);
@@ -363,7 +377,7 @@ void handleSystemInfo() {
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
   result += "  \"heapSize\": " + String(esp_get_free_heap_size()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
-  result += "  \"hotspots\": " + scanWifiNetworks() + ",\n";
+  // result += "  \"hotspots\": " + scanWifiNetworks() + ",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   if (settings.hasRTC) {
     result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
@@ -405,17 +419,11 @@ void handleSystemInfo() {
     result += "    }\n";
     result += "  },\n";
   }
-  result += "  \"settings\": {\n";
-  result += "    \"id\": " + String(settings.id) + ",\n";
-  result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
-  result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
-  result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
-  result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
+  result += "  \"settings\":" + settingsToJson(settings) + ",\n";
+  result += "  \"env\": {\n";
   uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
   result += "    \"nextAlarmSecs\":" + String(minTimeToNextAlarm) + ",\n";
   result += "    \"nextAlarm\": \"" + addTimeInterval(minTimeToNextAlarm, rtc.now()) + "\",\n";
-  result += "    \"alarms\": " + getAlarms(settings) + ",\n";
-  result += "    \"plants\": " + getPlants(settings) + "\n";
   result += "  }\n";
   result += "}";
 
@@ -592,13 +600,15 @@ void loop() {
         tskIDLE_PRIORITY + 4, // Task priority (very high)
         &alarmTask            // Task handle
       );
-    } else if (activateAlarm <= -1 || !IS_ALARM_ON && settings.hasDisplay) {
+    } else if (settings.hasDisplay && activateAlarm <= -1 || !IS_ALARM_ON) {
       if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) { 
         displayTime();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
       }
       xSemaphoreGive(i2c_mutex);
     }
   }
+  vTaskDelay(500 / portTICK_PERIOD_MS);
 }
 
 // Task for handling OTA
@@ -630,6 +640,7 @@ void handleWebServerTask(void * parameter) {
   server.on("/api/plants", handlePlants);
   server.on("/api/beep", []{
     beep(2, 150);
+    SERVER_RESPONSE_SUCCESS();
   });
   server.on("/api/alarm", handleAlarm);
   server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);

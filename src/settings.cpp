@@ -713,12 +713,16 @@ String addTimeInterval(uint32_t seconds, DateTime now) {
   TRACE("seconds: %lu\n", seconds);
   TRACE("FutureTimeSec: %lu\n", futureTime);
 
-  tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    TRACE("Failed to obtain time\n");
-  }
+  // If using NTP Time
+  // tm timeinfo;
+  // if(!getLocalTime(&timeinfo)){
+  //   TRACE("Failed to obtain time\n");
+  // }
 
-  futureTime = mktime(&timeinfo) + seconds;
+  // futureTime = mktime(&timeinfo) + seconds;
+
+
+  futureTime = now.unixtime() + seconds;
 
   // Convert to Unix time
   char buffer[20];
@@ -728,3 +732,48 @@ String addTimeInterval(uint32_t seconds, DateTime now) {
   return String(buffer);
 }
 
+String settingsToJson(const Settings& settings) {
+  // Create a JSON document with an estimated size
+  JsonDocument doc;
+
+  // Fill the JSON document
+  doc["id"] = settings.id;
+  doc["hostname"] = settings.hostname;
+  doc["lastDateTimeSync"] = settings.lastDateTimeSync;
+  doc["updatedOn"] = settings.updatedOn;
+  doc["rebootOnWifiFail"] = settings.rebootOnWifiFail;
+  doc["flowCalibrationFactor"] = settings.flowCalibrationFactor;
+  
+  JsonArray alarms = doc["alarms"].to<JsonArray>();
+  for (uint8_t i = 0; i < SETTINGS_MAX_ALARMS; i++) {
+    JsonArray alarmStates = alarms.add<JsonArray>();
+    for (uint8_t j = 0; j < SETTINGS_ALARM_STATES; j++) {
+      JsonObject alarmState = alarmStates.add<JsonObject>();
+      alarmState["weekday"] = settings.alarm[i][j].weekday;
+      alarmState["hour"] = settings.alarm[i][j].hour;
+      alarmState["minute"] = settings.alarm[i][j].minute;
+      alarmState["status"] = settings.alarm[i][j].status;
+    }
+  }
+
+  doc["maxPlants"] = settings.maxPlants;
+  
+  JsonArray plants = doc["plants"].to<JsonArray>();
+  for (uint8_t i = 0; i < settings.maxPlants; i++) {
+    JsonObject plant = plants.add<JsonObject>();
+    plant["id"] = settings.plant[i].id;
+    plant["size"] = settings.plant[i].size;
+    plant["status"] = settings.plant[i].status;
+  }
+
+  doc["hasDisplay"] = settings.hasDisplay;
+  doc["hasRTC"] = settings.hasRTC;
+  doc["hasEEPROM"] = settings.hasEEPROM;
+  doc["hasMCP"] = settings.hasMCP;
+
+  // Serialize the JSON document to a string
+  String jsonString;
+  serializeJson(doc, jsonString);
+
+  return jsonString;
+}

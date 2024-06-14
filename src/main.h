@@ -138,8 +138,17 @@ BaseType_t result = pdFALSE;
 #endif
 
 #ifndef ONLINE
-  #define ONLINE true
+  #define ONLINE
 #endif
+
+#ifndef ENABLE_OTA
+  #define ENABLE_OTA
+#endif
+
+#ifndef ENABLE_HTTP
+  #define ENABLE_HTTP
+#endif
+
 
 static SemaphoreHandle_t i2c_mutex;
 
@@ -157,6 +166,7 @@ void setTimezone(String timezone);
 void initTime(String timezone);
 long int getRtcOffset();
 void printLocalTime();
+void printRtcTime();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
 
