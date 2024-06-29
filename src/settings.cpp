@@ -432,16 +432,8 @@ bool isAlarmOn(Settings settings, DateTime now) {
   // return false;
 }
 
-bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
-  JsonDocument json;
-  DeserializationError error = deserializeJson(json, server.arg("plain"));
 
-  if (error) {
-    TRACE("deserializeJson() failed:\n");
-    TRACE(error.c_str());
-    return false;
-  }
-
+bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonArray alarmArray = json["alarm"].as<JsonArray>();
   int numAlarms = alarmArray.size();
   if (numAlarms > SETTINGS_MAX_ALARMS) {
@@ -486,7 +478,7 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
   return true;
 }
 
-bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
+bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonDocument json;
   DeserializationError error = deserializeJson(json, server.arg("plain"));
 
@@ -496,6 +488,10 @@ bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
     return false;
   }
 
+  return saveAlarms(json, alarm);
+}
+
+bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
   JsonArray plantArray = json["plants"].as<JsonArray>();
   int numPlant = plantArray.size();
   if (numPlant > SETTINGS_MAX_PLANTS) {
@@ -529,6 +525,19 @@ bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
     plants[plantIndex].status = status;
   }
   return true;
+}
+
+bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
+  JsonDocument json;
+  DeserializationError error = deserializeJson(json, server.arg("plain"));
+
+  if (error) {
+    TRACE("deserializeJson() failed:\n");
+    TRACE(error.c_str());
+    return false;
+  }
+
+  return savePlants(json, plants);
 }
 
 void beep(uint8_t times, unsigned long delay) {

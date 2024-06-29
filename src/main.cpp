@@ -58,6 +58,10 @@ void setup() {
   }
 
   Wire.begin();
+  i2c_mutex = xSemaphoreCreateMutex();
+  if (i2c_mutex == NULL) {
+    TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
+  }
 
   // Check if EEPROM is ready
   Wire.beginTransmission(EEPROM_ADDRESS);
@@ -102,6 +106,7 @@ void setup() {
   }
 
   // Setup i2c port extender
+  
   if(!setupMcp()) {
     settings.hasMCP = false;
     TRACE("MCP not Working\n");
@@ -111,7 +116,27 @@ void setup() {
 
   if(!initSDCard()) {
     TRACE("SD not working\n");
-  };
+    beep(4, 150);
+  }
+
+  JsonDocument config = readConfig();
+
+  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+    // Config is newer
+    uint32_t updatedOn = config["updatedOn"];
+    TRACE("rtc update: %u\n", rtc.now().unixtime());
+    TRACE("new update: %u\n", updatedOn);
+    TRACE("old update: %u\n", settings.updatedOn);
+    if(settings.updatedOn < updatedOn) {
+      TRACE("Flashing new config!\n");
+      beep(4, 50);
+      savePlants(config, settings.plant);
+      saveAlarms(config, settings.alarm);
+      settings.updatedOn = updatedOn;
+      EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+      EEPROM.commit();
+    }
+  }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -126,7 +151,12 @@ void setup() {
   TRACE("settings.hostname %s\n", settings.hostname);
 
 #if defined(ONLINE)
-  if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
+  String ssid = config["network"]["ssid"].isNull() ? WIFI_SSID : config["network"]["ssid"].as<String>();
+  String password = config["network"]["password"].isNull() ? WIFI_PASSWORD : config["network"]["password"].as<String>();
+  TRACE("ssid: %s\n", ssid.c_str());
+  TRACE("password: %s\n", password.c_str());
+  TRACE("config: %s\n", config.as<String>().c_str());
+  if (config["network"]["enabled"].as<bool>() && connectToWiFi(ssid.c_str(), password.c_str())) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Wifi Connected: IP: %s - Hostname: %s\n", WiFi.localIP().toString().c_str(), WiFi.getHostname());
@@ -136,9 +166,31 @@ void setup() {
     initTime(TIMEZONE);
     printLocalTime();
 
-    if (settings.hasDisplay) {
-      displayTime();
-    }
+    // Create a task for handling OTA
+#if defined(ENABLE_OTA)
+    xTaskCreatePinnedToCore(
+      handleOTATask,          // Function to implement the task
+      "OtaTask",              // Name of the task
+      46000,                  // Stack size in words
+      NULL,                   // Task input parameter
+      PRIORITY_LOW,           // Priority of the task
+      &otaTaskHandle,         // Task handle
+      1                       // Core where the task should run
+    );
+#endif
+    // Create a task for handling Web Server
+#if defined(ENABLE_HTTP)
+    xTaskCreatePinnedToCore(
+      handleWebServerTask,    // Function to implement the task
+      "WebServerTask",        // Name of the task
+      46000,                  // Stack size in words
+      NULL,                   // Task input parameter
+      PRIORITY_MEDIUM,        // Priority of the task
+      &webServerTaskHandle,   // Task handle
+      1                       // Core where the task should run
+    );
+#endif
+
   } else {
     TRACE("Wifi not connected!\n");  
     beep(2);  
@@ -146,36 +198,6 @@ void setup() {
   }
 #endif
 
-  i2c_mutex = xSemaphoreCreateMutex();
-  if (i2c_mutex == NULL) {
-    TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
-  }
-  
-  // Create a task for handling OTA
-#if defined(ONLINE) && defined(ENABLE_OTA)
-  xTaskCreatePinnedToCore(
-    handleOTATask,          // Function to implement the task
-    "OtaTask",              // Name of the task
-    46000,                  // Stack size in words
-    NULL,                   // Task input parameter
-    PRIORITY_LOW,           // Priority of the task
-    &otaTaskHandle,         // Task handle
-    1                       // Core where the task should run
-  );
-#endif
-
-  // // Create a task for handling Web Server
-#if defined(ONLINE) && defined(ENABLE_HTTP)
-  xTaskCreatePinnedToCore(
-    handleWebServerTask,    // Function to implement the task
-    "WebServerTask",        // Name of the task
-    46000,                  // Stack size in words
-    NULL,                   // Task input parameter
-    PRIORITY_MEDIUM,        // Priority of the task
-    &webServerTaskHandle,   // Task handle
-    1                       // Core where the task should run
-  );
-#endif
   // Good To Go!
   beep(1);
   vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -414,6 +436,7 @@ void handleSystemInfo() {
   if(!config.isNull()) {
     result += "  \"config\": {\n";
     result += "    \"network\": {\n";
+    result += "      \"enabled\": \"" + String(config["network"]["enabled"].as<bool>() ? "true" : "false") + "\",\n";
     result += "      \"ssid\": \"" + config["network"]["ssid"].as<String>() + "\",\n";
     result += "      \"password\": \"" + config["network"]["password"].as<String>() + "\"\n";
     result += "    }\n";
