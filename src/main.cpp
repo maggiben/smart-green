@@ -58,6 +58,10 @@ void setup() {
   }
 
   Wire.begin();
+  i2c_mutex = xSemaphoreCreateMutex();
+  if (i2c_mutex == NULL) {
+    TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
+  }
 
   // Check if EEPROM is ready
   Wire.beginTransmission(EEPROM_ADDRESS);
@@ -69,6 +73,10 @@ void setup() {
   } else {
     // Init EEPROM chip in the RTC module
     if (EEPROM.begin(EEPROM_SIZE)) {
+      // EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+      // EEPROM.commit();
+      // vTaskDelay(500 / portTICK_PERIOD_MS);
+      // beep(5, 150);
       // Read EEPROM settings
       EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
       // TRACE("Settings: %s now: %d\n", settings.hostname, rtc.now().unixtime());
@@ -98,6 +106,7 @@ void setup() {
   }
 
   // Setup i2c port extender
+  
   if(!setupMcp()) {
     settings.hasMCP = false;
     TRACE("MCP not Working\n");
@@ -105,11 +114,29 @@ void setup() {
 
   printI2cDevices();
 
-#if USE_SD_CARD == true
   if(!initSDCard()) {
     TRACE("SD not working\n");
-  };
-#endif
+    beep(4, 150);
+  }
+
+  JsonDocument config = readConfig();
+
+  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+    // Config is newer
+    uint32_t updatedOn = config["updatedOn"];
+    TRACE("rtc update: %u\n", rtc.now().unixtime());
+    TRACE("new update: %u\n", updatedOn);
+    TRACE("old update: %u\n", settings.updatedOn);
+    if(settings.updatedOn < updatedOn) {
+      TRACE("Flashing new config!\n");
+      beep(4, 50);
+      savePlants(config, settings.plant);
+      saveAlarms(config, settings.alarm);
+      settings.updatedOn = updatedOn;
+      EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+      EEPROM.commit();
+    }
+  }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -121,67 +148,59 @@ void setup() {
     display.display();
   }
 
-  TRACE("Hostname %s\n", settings.hostname);
+  TRACE("settings.hostname %s\n", settings.hostname);
 
-#if ONLINE == true
-  if (connectToWiFi(WIFI_SSID, WIFI_PASSWORD)) {
+#if defined(ONLINE)
+  String ssid = config["network"]["ssid"].isNull() ? WIFI_SSID : config["network"]["ssid"].as<String>();
+  String password = config["network"]["password"].isNull() ? WIFI_PASSWORD : config["network"]["password"].as<String>();
+  TRACE("ssid: %s\n", ssid.c_str());
+  TRACE("password: %s\n", password.c_str());
+  TRACE("config: %s\n", config.as<String>().c_str());
+  if (config["network"]["enabled"].as<bool>() && connectToWiFi(ssid.c_str(), password.c_str())) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
-    TRACE("Connected: "); PRINT(ip); TRACE("\n");
-
-    // // Set up the OTA end callback
-    ArduinoOTA.onEnd([]() {
-      beep(4);
-      TRACE("OTA update successful, rebooting...\n");
-      vTaskDelay(500 / portTICK_PERIOD_MS);
-      ESP.restart();
-    });
-
-    ArduinoOTA.setHostname(settings.hostname);
-    // Initialize OTA
-    ArduinoOTA.begin();
+    TRACE("Wifi Connected: IP: %s - Hostname: %s\n", WiFi.localIP().toString().c_str(), WiFi.getHostname());
 
     // Ask for the current time using NTP request builtin into ESP firmware.
     TRACE("Setup ntp...\n");
-    initTime(TIMEZONE);   // Set for Melbourne/AU
+    initTime(TIMEZONE);
     printLocalTime();
 
-    // Enable CORS header in webserver results
-    server.enableCORS(true);
-    // REST Endpoint (Only if Connected)
-    server.on("/", handleRoot);
-    server.on("/api/plants", handlePlants);
-    server.on("/api/beep", []{
-      beep(2, 150);
-    });
-    server.onNotFound(handleNotFound);
-    server.on("/api/alarm", handleAlarm);
-    server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
-    server.on("/api/settings", HTTP_POST, handleSaveSettings);
-    server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
-    server.on("/api/logs", HTTP_GET, handleLogs);
+    // Create a task for handling OTA
+#if defined(ENABLE_OTA)
+    xTaskCreatePinnedToCore(
+      handleOTATask,          // Function to implement the task
+      "OtaTask",              // Name of the task
+      46000,                  // Stack size in words
+      NULL,                   // Task input parameter
+      PRIORITY_LOW,           // Priority of the task
+      &otaTaskHandle,         // Task handle
+      1                       // Core where the task should run
+    );
+#endif
+    // Create a task for handling Web Server
+#if defined(ENABLE_HTTP)
+    xTaskCreatePinnedToCore(
+      handleWebServerTask,    // Function to implement the task
+      "WebServerTask",        // Name of the task
+      46000,                  // Stack size in words
+      NULL,                   // Task input parameter
+      PRIORITY_MEDIUM,        // Priority of the task
+      &webServerTaskHandle,   // Task handle
+      1                       // Core where the task should run
+    );
+#endif
 
-    // Start Server
-    server.begin();
-
-    TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
-    if (settings.hasDisplay) {
-      displayTime();
-    }
   } else {
     TRACE("Wifi not connected!\n");  
     beep(2);  
     handleWifiConnectionError("WiFi connection error", settings);
   }
+#endif
+
   // Good To Go!
   beep(1);
   vTaskDelay(100 / portTICK_PERIOD_MS);
-#else
-  printLocalTime();
-  beep(2);
-  vTaskDelay(100 / portTICK_PERIOD_MS);
-#endif
-  
 }
 
 
@@ -317,15 +336,20 @@ void displayTime() {
 bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pause) {
   int i = 0;
   // allow to address the device by the given name e.g. http://webserver
-  WiFi.setHostname(settings.hostname);
+  // Set WiFi mode to Station (Client)
   WiFi.mode(WIFI_STA);
+  // Disconnect any existing WiFi connections
   WiFi.disconnect();
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Set the hostname
+  WiFi.setHostname(settings.hostname);
+
   
   #if defined(ARDUINO_ARCH_ESP8266)
     WiFi.forceSleepWake();
     delay(200);
   #endif
+  // Begin the WiFi connection
   WiFi.begin(ssid, password);
   do {
     vTaskDelay(pause / portTICK_PERIOD_MS);
@@ -375,7 +399,7 @@ void handleSystemInfo() {
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
   result += "  \"heapSize\": " + String(esp_get_free_heap_size()) + ",\n";
   result += "  \"SSID\": \"" + String(WIFI_SSID) + "\",\n";
-  result += "  \"hotspots\": " + scanWifiNetworks() + ",\n";
+  // result += "  \"hotspots\": " + scanWifiNetworks() + ",\n";
   result += "  \"signalDbm\": " + String(WiFi.RSSI()) + ",\n";
   if (settings.hasRTC) {
     result += "  \"temperature\": " + String(rtc.getTemperature()) + ",\n";
@@ -402,34 +426,27 @@ void handleSystemInfo() {
   result += "    \"totalMillilitres\": " + String(TOTAL_MILLILITRES) + ",\n";
   result += "    \"totalFlowPulses\": " + String(FLOW_METER_TOTAL_PULSE_COUNT) + "\n";
   result += "  },\n";
-#if USE_SD_CARD == true
   result += "  \"sdcard\": {\n";
   result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
   result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
   result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
   result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
-#endif
   JsonDocument config = readConfig();
   if(!config.isNull()) {
     result += "  \"config\": {\n";
     result += "    \"network\": {\n";
+    result += "      \"enabled\": \"" + String(config["network"]["enabled"].as<bool>() ? "true" : "false") + "\",\n";
     result += "      \"ssid\": \"" + config["network"]["ssid"].as<String>() + "\",\n";
     result += "      \"password\": \"" + config["network"]["password"].as<String>() + "\"\n";
     result += "    }\n";
     result += "  },\n";
   }
-  result += "  \"settings\": {\n";
-  result += "    \"id\": " + String(settings.id) + ",\n";
-  result += "    \"hostname\": \"" + String(settings.hostname) + "\",\n";
-  result += "    \"lastDateTimeSync\": " + String(settings.lastDateTimeSync) + ",\n";
-  result += "    \"updatedOn\": " + String(settings.updatedOn) + ",\n";
-  result += "    \"rebootOnWifiFail\": " + String(JSONBOOL(settings.rebootOnWifiFail)) + ",\n";
+  result += "  \"settings\":" + settingsToJson(settings) + ",\n";
+  result += "  \"env\": {\n";
   uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
   result += "    \"nextAlarmSecs\":" + String(minTimeToNextAlarm) + ",\n";
   result += "    \"nextAlarm\": \"" + addTimeInterval(minTimeToNextAlarm, rtc.now()) + "\",\n";
-  result += "    \"alarms\": " + getAlarms(settings) + ",\n";
-  result += "    \"plants\": " + getPlants(settings) + "\n";
   result += "  }\n";
   result += "}";
 
@@ -592,34 +609,79 @@ void handleSaveSettings() {
 }
 
 void loop() {
-#if ONLINE == true
-  server.handleClient();
-  // Delay or die
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  // Handle OTA updates
-  ArduinoOTA.handle();
-  // Delay or die
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-#else
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-#endif
-
+  TaskHandle_t alarmTask;
   if (settings.hasRTC) {
     int activateAlarm = getActiveAlarmId(settings, rtc.now());
 
     if (activateAlarm > -1 && !IS_ALARM_ON) {
       IS_ALARM_ON = true;
       xTaskCreate(
-        pumpWater,          // Task function
-        "AlarmTask",        // Task name
-        8192,               // Stack size (bytes)
-        NULL,               // Task parameter
-        1,                  // Task priority
-        NULL                // Task handle
+        pumpWater,            // Task function
+        "AlarmTask",          // Task name
+        8192,                 // Stack size (bytes)
+        NULL,                 // Task parameter
+        tskIDLE_PRIORITY + 4, // Task priority (very high)
+        &alarmTask            // Task handle
       );
-    } else if (activateAlarm <= -1 || !IS_ALARM_ON && settings.hasDisplay) {
-      displayTime();
+    } else if (settings.hasDisplay && activateAlarm <= -1 || !IS_ALARM_ON) {
+      if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) { 
+        displayTime();
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+      }
+      xSemaphoreGive(i2c_mutex);
     }
+  }
+  vTaskDelay(500 / portTICK_PERIOD_MS);
+}
+
+// Task for handling OTA
+void handleOTATask(void * parameter) {
+  // // Set up the OTA end callback
+  ArduinoOTA.onEnd([]() {
+    beep(4);
+    TRACE("OTA update successful, rebooting...\n");
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+    ESP.restart();
+  });
+
+  ArduinoOTA.setHostname(settings.hostname);
+  // Initialize OTA
+  ArduinoOTA.begin();
+  for(;;) {
+    ArduinoOTA.handle();
+    vTaskDelay(10 / portTICK_PERIOD_MS ); // Give some time for the other tasks
+  }
+}
+
+// Task for handling Web Server
+void handleWebServerTask(void * parameter) {
+  // Enable CORS header in webserver results
+  server.enableCORS(true);
+  // REST Endpoint (Only if Connected)
+  server.onNotFound(handleNotFound);
+  server.on("/", handleRoot);
+  server.on("/api/plants", handlePlants);
+  server.on("/api/beep", []{
+    beep(2, 150);
+    SERVER_RESPONSE_SUCCESS();
+  });
+  server.on("/api/alarm", handleAlarm);
+  server.on("/api/systeminfo", HTTP_GET, handleSystemInfo);
+  server.on("/api/settings", HTTP_POST, handleSaveSettings);
+  server.on("/api/test-alarm", HTTP_GET, handleTestAlarm);
+  server.on("/api/logs", HTTP_GET, handleLogs);
+
+  // Start Server
+  server.begin();
+
+  TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
+  
+  for(;;) {
+    if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) {
+      server.handleClient();
+    }
+    xSemaphoreGive(i2c_mutex);
+    vTaskDelay(150 / portTICK_PERIOD_MS); // Give some time for the other tasks
   }
 }
 

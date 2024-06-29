@@ -109,6 +109,12 @@ TaskHandle_t otaTaskHandle;
   static const BaseType_t app_cpu = 1;
 #endif
 
+// Define custom priority levels
+#define PRIORITY_LOW       (tskIDLE_PRIORITY + 1)
+#define PRIORITY_MEDIUM    (tskIDLE_PRIORITY + 2)
+#define PRIORITY_HIGH      (tskIDLE_PRIORITY + 3)
+#define PRIORITY_VERY_HIGH (tskIDLE_PRIORITY + 4)
+
 BaseType_t result = pdFALSE;
 
 #ifndef IS_ALARM_ON
@@ -132,12 +138,19 @@ BaseType_t result = pdFALSE;
 #endif
 
 #ifndef ONLINE
-  #define ONLINE false
+  #define ONLINE
 #endif
 
-#ifndef USE_SD_CARD
-  #define USE_SD_CARD false
+#ifndef ENABLE_OTA
+  #define ENABLE_OTA
 #endif
+
+#ifndef ENABLE_HTTP
+  #define ENABLE_HTTP
+#endif
+
+
+static SemaphoreHandle_t i2c_mutex;
 
 bool setupMcp();
 void pulseCounter();
@@ -153,6 +166,7 @@ void setTimezone(String timezone);
 void initTime(String timezone);
 long int getRtcOffset();
 void printLocalTime();
+void printRtcTime();
 void writeToEEPROM(int address, void* data, size_t length);
 void readFromEEPROM(int address, void* data, size_t length);
 
@@ -166,7 +180,10 @@ void handlePlants();
 void handleLogs();
 void handleRoot();
 void displayTime();
-void pumpWater(void *parameter);
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
 void handleNotFound();
+/* Threads */
+void pumpWater(void *parameter);
+void handleOTATask(void * parameter);
+void handleWebServerTask(void * parameter);

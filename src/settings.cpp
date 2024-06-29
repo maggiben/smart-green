@@ -432,16 +432,8 @@ bool isAlarmOn(Settings settings, DateTime now) {
   // return false;
 }
 
-bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
-  JsonDocument json;
-  DeserializationError error = deserializeJson(json, server.arg("plain"));
 
-  if (error) {
-    TRACE("deserializeJson() failed:\n");
-    TRACE(error.c_str());
-    return false;
-  }
-
+bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonArray alarmArray = json["alarm"].as<JsonArray>();
   int numAlarms = alarmArray.size();
   if (numAlarms > SETTINGS_MAX_ALARMS) {
@@ -486,7 +478,7 @@ bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_AL
   return true;
 }
 
-bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
+bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonDocument json;
   DeserializationError error = deserializeJson(json, server.arg("plain"));
 
@@ -496,6 +488,10 @@ bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
     return false;
   }
 
+  return saveAlarms(json, alarm);
+}
+
+bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
   JsonArray plantArray = json["plants"].as<JsonArray>();
   int numPlant = plantArray.size();
   if (numPlant > SETTINGS_MAX_PLANTS) {
@@ -529,6 +525,19 @@ bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
     plants[plantIndex].status = status;
   }
   return true;
+}
+
+bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
+  JsonDocument json;
+  DeserializationError error = deserializeJson(json, server.arg("plain"));
+
+  if (error) {
+    TRACE("deserializeJson() failed:\n");
+    TRACE(error.c_str());
+    return false;
+  }
+
+  return savePlants(json, plants);
 }
 
 void beep(uint8_t times, unsigned long delay) {
@@ -713,12 +722,16 @@ String addTimeInterval(uint32_t seconds, DateTime now) {
   TRACE("seconds: %lu\n", seconds);
   TRACE("FutureTimeSec: %lu\n", futureTime);
 
-  tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    TRACE("Failed to obtain time\n");
-  }
+  // If using NTP Time
+  // tm timeinfo;
+  // if(!getLocalTime(&timeinfo)){
+  //   TRACE("Failed to obtain time\n");
+  // }
 
-  futureTime = mktime(&timeinfo) + seconds;
+  // futureTime = mktime(&timeinfo) + seconds;
+
+
+  futureTime = now.unixtime() + seconds;
 
   // Convert to Unix time
   char buffer[20];
@@ -728,3 +741,48 @@ String addTimeInterval(uint32_t seconds, DateTime now) {
   return String(buffer);
 }
 
+String settingsToJson(const Settings& settings) {
+  // Create a JSON document with an estimated size
+  JsonDocument doc;
+
+  // Fill the JSON document
+  doc["id"] = settings.id;
+  doc["hostname"] = settings.hostname;
+  doc["lastDateTimeSync"] = settings.lastDateTimeSync;
+  doc["updatedOn"] = settings.updatedOn;
+  doc["rebootOnWifiFail"] = settings.rebootOnWifiFail;
+  doc["flowCalibrationFactor"] = settings.flowCalibrationFactor;
+  
+  JsonArray alarms = doc["alarms"].to<JsonArray>();
+  for (uint8_t i = 0; i < SETTINGS_MAX_ALARMS; i++) {
+    JsonArray alarmStates = alarms.add<JsonArray>();
+    for (uint8_t j = 0; j < SETTINGS_ALARM_STATES; j++) {
+      JsonObject alarmState = alarmStates.add<JsonObject>();
+      alarmState["weekday"] = settings.alarm[i][j].weekday;
+      alarmState["hour"] = settings.alarm[i][j].hour;
+      alarmState["minute"] = settings.alarm[i][j].minute;
+      alarmState["status"] = settings.alarm[i][j].status;
+    }
+  }
+
+  doc["maxPlants"] = settings.maxPlants;
+  
+  JsonArray plants = doc["plants"].to<JsonArray>();
+  for (uint8_t i = 0; i < settings.maxPlants; i++) {
+    JsonObject plant = plants.add<JsonObject>();
+    plant["id"] = settings.plant[i].id;
+    plant["size"] = settings.plant[i].size;
+    plant["status"] = settings.plant[i].status;
+  }
+
+  doc["hasDisplay"] = settings.hasDisplay;
+  doc["hasRTC"] = settings.hasRTC;
+  doc["hasEEPROM"] = settings.hasEEPROM;
+  doc["hasMCP"] = settings.hasMCP;
+
+  // Serialize the JSON document to a string
+  String jsonString;
+  serializeJson(doc, jsonString);
+
+  return jsonString;
+}
