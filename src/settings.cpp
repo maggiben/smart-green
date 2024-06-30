@@ -135,7 +135,6 @@ String getPlants(Settings settings) {
 bool initSDCard() {
   // pinMode(SS, OUTPUT);
   // digitalWrite(SS, HIGH); // Set SS pin high initially
-  pinMode(BUZZER_PIN, OUTPUT);
   if(!SD.begin(SS)) {
     TRACE("Card Mount Failed\n");
     return false;
@@ -396,40 +395,6 @@ bool isAlarmOn(Settings settings, DateTime now) {
     return true;
   }
   return false;
-  // // Get the bitmask for the current day
-  // uint8_t currentDayMask = 1 << now.dayOfTheWeek(); // Assuming 0 is Sunday, 1 is Monday, ...
-  // // Iterate through all alarms
-  // for (int i = 0; i < SETTINGS_MAX_ALARMS; i++) {
-  //   // Check if the alarm is active (alarm[alarmNumber][0] == 1)
-  //   if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
-  //     // Extract alarm time components
-  //     uint8_t alarmWeekday = settings.alarm[i][0].weekday;
-  //     uint8_t startAlarmHour = settings.alarm[i][0].hour;
-  //     uint8_t startAlarmMinute = settings.alarm[i][0].minute;
-  //     uint8_t status = settings.alarm[i][0].status;
-
-  //     uint8_t endAlarmHour = settings.alarm[i][1].hour;
-  //     uint8_t endAlarmMinute = settings.alarm[i][1].minute;
-  //     // uint8_t alarmSecond = settings.alarm[i][1][3];
-
-  //     // Check if the alarm matches the current time
-  //     if ((alarmWeekday & currentDayMask) != 0) {
-  //       if(now.hour() >= startAlarmHour && now.hour() <= endAlarmHour) {
-  //         if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
-  //           // Alarm is active
-  //           if (status == 1) {
-  //             return true;
-  //             break;
-  //           }
-  //         }
-  //       }
-  //     }
-  //     return false;
-  //   }
-  // }
-
-  // // No active alarm found
-  // return false;
 }
 
 
@@ -551,25 +516,6 @@ void beep(uint8_t times, unsigned long delay) {
   }
 }
 
-// String getI2cDeviceList() {
-//   String result = "[";
-//   byte* i2cDevices = (byte*)malloc(sizeof(byte) * MAX_I2C_DEVICES);
-//   if (i2cDevices == NULL) {
-//     TRACE("Failed to allocate memory\n");
-//     return String("[]");
-//   }
-//   memset(i2cDevices, 0, sizeof(byte) * MAX_I2C_DEVICES);
-//   for (int i = 0; i < sizeof(i2cDevices) / sizeof(i2cDevices[0]); i++) {
-//     result += String(i2cDevices[i]);
-//     if (i < sizeof(i2cDevices) / sizeof(i2cDevices[0]) - 1) {
-//       result += ", ";
-//     }
-//   }
-//   result += "]";
-//   free(i2cDevices);
-//   return result;
-// }
-
 bool isConnected() {
   return (WiFi.status() == WL_CONNECTED);
 }
@@ -623,10 +569,6 @@ JsonDocument readConfig() {
     return doc;
   }
 
-  // Extract the SSID and password
-  TRACE("READ CONFIG ssid: %s\n", doc["network"]["ssid"].as<String>().c_str());
-  TRACE("READ CONFIG password: %s\n", doc["network"]["password"].as<String>().c_str());
-  
   return doc;
 }
 

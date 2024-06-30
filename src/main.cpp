@@ -35,20 +35,9 @@
 
 #include "main.h"
 
-bool setupMcp() {
-  // uncomment appropriate mcp.begin
-  if (!mcp.begin_I2C()) {
-    TRACE("MCP I2c Error\n");
-    return false;
-  }
-  for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
-    mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
-    mcp.digitalWrite(i, HIGH); // Set all GPIO pins to HIGH
-  }
-  mcp.writeGPIOAB(0b1111111111111111);
-  return true;
-}
-
+/**
+ * Hardware setup
+ */
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -205,7 +194,26 @@ void setup() {
   vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
+/**
+ * i2c Port Extender setup 
+ */
+bool setupMcp() {
+  // uncomment appropriate mcp.begin
+  if (!mcp.begin_I2C()) {
+    TRACE("MCP I2c Error\n");
+    return false;
+  }
+  for (uint8_t i = 0; i < I2C_MCP_PINCOUNT; i++) {
+    mcp.pinMode(i, OUTPUT); // Set all pins as OUTPUT
+    mcp.digitalWrite(i, HIGH); // Set all GPIO pins to HIGH
+  }
+  mcp.writeGPIOAB(0b1111111111111111);
+  return true;
+}
 
+/**
+ * Pulse counter interrupt service
+ */
 void pulseCounter() {
   // Increment the pulse counter
   int value = digitalRead(FLOW_METER_PIN);
@@ -274,8 +282,6 @@ void setTimezone(String timezone) {
 }
 
 void initTime(String timezone) {
-  // Settings *settings = (Settings *) malloc(sizeof(Settings));
-  // DateTime dateTime;
   tm timeinfo;
   TRACE("Setting up time\n");
   configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset

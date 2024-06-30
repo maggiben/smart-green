@@ -149,7 +149,6 @@ BaseType_t result = pdFALSE;
   #define ENABLE_HTTP
 #endif
 
-
 static SemaphoreHandle_t i2c_mutex;
 
 bool setupMcp();
@@ -158,7 +157,6 @@ void calcFlow();
 void displayFlow();
 void handleTestAlarm();
 
-// void errorMsg(String error, bool restart = true);
 bool isConnected();
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
 void syncRTC();
