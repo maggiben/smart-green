@@ -179,10 +179,13 @@ void handleAlarm();
 void handlePlants();
 void handleLogs();
 void handleRoot();
+void handleNotFound();
+
+// IO
 void displayTime();
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
-void handleNotFound();
+
 /* Threads */
 void pumpWater(void *parameter);
 void handleOTATask(void * parameter);

@@ -191,10 +191,12 @@ void setup() {
     );
 #endif
 
-  } else {
+  } else if (config["network"]["enabled"].as<bool>()) {
     TRACE("Wifi not connected!\n");  
-    beep(2);  
+    beep(2);
     handleWifiConnectionError("WiFi connection error", settings);
+  } else {
+    TRACE("Wifi disabled!\n");
   }
 #endif
 
