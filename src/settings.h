@@ -89,33 +89,52 @@ struct Config {
   Network network;
 };
 
-void printI2cDevices(byte* devices = NULL);
+/**
+ * Serialization functions
+ */
 String getAlarms(Settings settings);
-int getActiveAlarmId(Settings settings, DateTime now);
-bool isAlarmOn(Settings settings, DateTime now);
-void beep(uint8_t times, unsigned long delay = 500);
-bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);
-bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);
-bool getAlarmRunningState();
-void setAlarmRunningState(bool state);
-void toggleAlarmRunningState();
-String listDirectory(const char* directory = "/logs", unsigned long from = 0, unsigned long to = 1024);
-bool createDirectoryIfNotExists(const char* path);
-bool initSDCard();
-bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder = "/logs");
-bool isConnected();
-String listDirectory2(const char* directory);
-void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
-void handleWifiConnectionError(String error, Settings settings, bool restart = false);
-unsigned long getLogCount(const char* destinationFolder = "/logs");
-bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]);
-bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]);
 String getPlants(Settings settings);
-JsonDocument readConfig();
-const char* getResetReason();
 String uptimeStr();
 String scanWifiNetworks();
-uint32_t getNextAlarmTime(Settings settings, DateTime now);
-uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds);
 String addTimeInterval(uint32_t seconds, DateTime now);
 String settingsToJson(const Settings& settings);
+String listDirectory(const char* directory = "/logs", unsigned long from = 0, unsigned long to = 1024);
+String listDirectory2(const char* directory);
+
+/**
+ * Debugging
+ */
+void printI2cDevices(byte* devices = NULL);
+void beep(uint8_t times, unsigned long delay = 500);
+const char* getResetReason();
+
+/**
+ * Alarm functions
+ */
+bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);
+int getActiveAlarmId(Settings settings, DateTime now);
+bool isAlarmOn(Settings settings, DateTime now);
+
+/**
+ * File management
+ */
+bool initSDCard();
+JsonDocument readConfig();
+bool createDirectoryIfNotExists(const char* path);
+bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder = "/logs");
+unsigned long getLogCount(const char* destinationFolder = "/logs");
+
+
+void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
+
+/**
+ * Plant functions
+ */
+bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]);
+
+
+
+
+uint32_t getNextAlarmTime(Settings settings, DateTime now);
+uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds);
+

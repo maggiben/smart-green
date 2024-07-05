@@ -151,24 +151,30 @@ BaseType_t result = pdFALSE;
 
 static SemaphoreHandle_t i2c_mutex;
 
+/**
+ * Hardware Setup
+ */
 bool setupMcp();
 void pulseCounter();
 void calcFlow();
-void displayFlow();
-void handleTestAlarm();
 
-bool isConnected();
+/**
+ * Wireless functions
+ */
 bool connectToWiFi(const char* ssid, const char* password, int max_tries = 20, int pause = 500);
+void handleWifiConnectionError(String error, Settings settings, bool restart = false);
+
+/**
+ * Time & RTC Functions
+ */
 void syncRTC();
 void setTimezone(String timezone);
 void initTime(String timezone);
 long int getRtcOffset();
-void printLocalTime();
-void printRtcTime();
-void writeToEEPROM(int address, void* data, size_t length);
-void readFromEEPROM(int address, void* data, size_t length);
 
-// This function is called when the sysInfo service was requested.
+/**
+ * API Handlers
+ */
 void handleSystemInfo();
 void handleValve();
 void handleSaveSettings();
@@ -178,13 +184,25 @@ void handlePlants();
 void handleLogs();
 void handleRoot();
 void handleNotFound();
+void handleTestAlarm();
 
-// IO
+/**
+ * LCD Display & Serial debug functions
+ */
+void printLocalTime();
+void printRtcTime();
+void displayFlow();
 void displayTime();
+
+/**
+ * IO
+ */
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
 
-/* Threads */
+/**
+ * Threads
+ */
 void pumpWater(void *parameter);
 void handleOTATask(void * parameter);
 void handleWebServerTask(void * parameter);

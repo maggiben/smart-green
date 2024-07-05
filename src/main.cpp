@@ -363,7 +363,7 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
     vTaskDelay(pause / portTICK_PERIOD_MS);
     TRACE(".");
     i++;
-  } while (!isConnected() && i < max_tries);
+  } while (!WiFi.status() == WL_CONNECTED && i < max_tries);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
 
@@ -376,7 +376,16 @@ bool connectToWiFi(const char* ssid, const char* password, int max_tries, int pa
     i++;
   } while (!MDNS.begin(settings.hostname) && i < max_tries);
 
-  return isConnected();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+void handleWifiConnectionError(String error, Settings settings, bool restart) {
+  TRACE("Error: %s\n", error.c_str());
+  if (settings.rebootOnWifiFail) {
+    TRACE("Rebooting now...\n");
+    vTaskDelay(150 / portTICK_PERIOD_MS);
+    ESP.restart();
+  }
 }
 
 void syncRTC() {
@@ -490,13 +499,16 @@ void handleAlarm() {
     SERVER_RESPONSE_OK(result);
   } else if (server.method() == HTTP_POST) {
     JsonDocument json;
+    DeserializationError error = deserializeJson(json, server.arg("plain"));
     
-    if (deserializeJson(json, server.arg("plain"))) {
-      SERVER_RESPONSE_ERROR(400, "Invalid JSON");
+    if (error) {
+      TRACE("deserializeJson() failed:\n");
+      TRACE(error.c_str());
+      SERVER_RESPONSE_ERROR(500, "Serialization error");
       return;
     }
 
-    if(!setupAlarms(server, settings.alarm)) {
+    if(!saveAlarms(json, settings.alarm)) {
       SERVER_RESPONSE_ERROR(500, "Serialization error");
       return;
     };
@@ -582,6 +594,12 @@ void handleLogs() {
   return;
 }
 
+void handleTestAlarm() {
+  waterPlants();
+  SERVER_RESPONSE_OK("{\"success\":true}");
+  return;
+}
+
 void handleNotFound() {
   SERVER_RESPONSE_ERROR(404, "Not Found");
 }
@@ -614,6 +632,51 @@ void handleSaveSettings() {
   } else {
     SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
   }
+}
+
+void handlePlants() {
+  if (server.method() == HTTP_GET) {
+    String result;
+
+    result += "{\n";
+    result += "  \"plants\": " + getPlants(settings) + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else if (server.method() == HTTP_POST) {
+
+    JsonDocument json;
+    DeserializationError error = deserializeJson(json, server.arg("plain"));
+
+    if (error) {
+      TRACE("deserializeJson() failed:\n");
+      TRACE(error.c_str());
+      SERVER_RESPONSE_ERROR(500, "Serialization error");
+      return;
+    }
+
+    if(!savePlants(json, settings.plant)) {
+      SERVER_RESPONSE_ERROR(500, "Serialization error");
+      return;
+    };
+      
+    settings.updatedOn = rtc.now().unixtime();
+    EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+    EEPROM.commit();
+
+    String result;
+
+    result += "{\n";
+    result += "  \"plants\": " + getPlants(settings) + "\n";
+    result += "}";
+
+    server.sendHeader("Cache-Control", "no-cache");
+    SERVER_RESPONSE_OK(result);
+  } else {
+    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
+  }
+  return;
 }
 
 void loop() {
@@ -748,45 +811,4 @@ void waterPlants() {
       waterPlant(plant.id, 20, 250);
     }
   }
-}
-
-void handleTestAlarm() {
-  waterPlants();
-  SERVER_RESPONSE_OK("{\"success\":true}");
-  return;
-}
-
-void handlePlants() {
-  if (server.method() == HTTP_GET) {
-    String result;
-
-    result += "{\n";
-    result += "  \"plants\": " + getPlants(settings) + "\n";
-    result += "}";
-
-    server.sendHeader("Cache-Control", "no-cache");
-    SERVER_RESPONSE_OK(result);
-  } else if (server.method() == HTTP_POST) {
-
-    if(!setupPlants(server, settings.plant)) {
-      SERVER_RESPONSE_ERROR(500, "Serialization error");
-      return;
-    };
-      
-    settings.updatedOn = rtc.now().unixtime();
-    EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
-    EEPROM.commit();
-
-    String result;
-
-    result += "{\n";
-    result += "  \"plants\": " + getPlants(settings) + "\n";
-    result += "}";
-
-    server.sendHeader("Cache-Control", "no-cache");
-    SERVER_RESPONSE_OK(result);
-  } else {
-    SERVER_RESPONSE_ERROR(405, "Method Not Allowed");
-  }
-  return;
 }

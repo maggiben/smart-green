@@ -443,19 +443,6 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
   return true;
 }
 
-bool setupAlarms(WebServer &server, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
-  JsonDocument json;
-  DeserializationError error = deserializeJson(json, server.arg("plain"));
-
-  if (error) {
-    TRACE("deserializeJson() failed:\n");
-    TRACE(error.c_str());
-    return false;
-  }
-
-  return saveAlarms(json, alarm);
-}
-
 bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
   JsonArray plantArray = json["plants"].as<JsonArray>();
   int numPlant = plantArray.size();
@@ -492,19 +479,6 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
   return true;
 }
 
-bool setupPlants(WebServer &server, Plant plants[SETTINGS_MAX_PLANTS]) {
-  JsonDocument json;
-  DeserializationError error = deserializeJson(json, server.arg("plain"));
-
-  if (error) {
-    TRACE("deserializeJson() failed:\n");
-    TRACE(error.c_str());
-    return false;
-  }
-
-  return savePlants(json, plants);
-}
-
 void beep(uint8_t times, unsigned long delay) {
   TRACE("beeping times: %d\n", times);
   pinMode(BUZZER_PIN, OUTPUT);
@@ -514,10 +488,6 @@ void beep(uint8_t times, unsigned long delay) {
     digitalWrite(BUZZER_PIN, LOW);
     vTaskDelay(delay / portTICK_PERIOD_MS);
   }
-}
-
-bool isConnected() {
-  return (WiFi.status() == WL_CONNECTED);
 }
 
 void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber) {
@@ -531,16 +501,6 @@ void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber) {
     }
   }
 }
-
-void handleWifiConnectionError(String error, Settings settings, bool restart) {
-  TRACE("Error: %s\n", error.c_str());
-  if (settings.rebootOnWifiFail) {
-    TRACE("Rebooting now...\n");
-    vTaskDelay(150 / portTICK_PERIOD_MS);
-    ESP.restart();
-  }
-}
-
 
 JsonDocument readConfig() {
   JsonDocument doc;

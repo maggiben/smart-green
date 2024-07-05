@@ -1,0 +1,112 @@
+{
+    "network": {
+        "enabled": false,
+        "ssid": "TP-Link_42B4",
+        "password": "pirulo123"
+    },
+    "alarm": [
+        [
+            {
+                "weekday": 2,
+                "hour": 3,
+                "minute": 5,
+                "status": 1
+            },
+            {
+                "weekday": 2,
+                "hour": 3,
+                "minute": 6,
+                "status": 1
+            }
+        ], [
+            {
+                "weekday": 8,
+                "hour": 15,
+                "minute": 0,
+                "status": 1
+            },
+            {
+                "weekday": 8,
+                "hour": 15,
+                "minute": 1,
+                "status": 1
+            }
+        ], [
+            {
+                "weekday": 32,
+                "hour": 15,
+                "minute": 0,
+                "status": 1
+            },
+            {
+                "weekday": 32,
+                "hour": 15,
+                "minute": 1,
+                "status": 1
+            }
+        ]
+    ],
+    "plants": [
+        {
+            "id": 0,
+            "size": 12,
+            "status": 1
+        },
+        {
+            "id": 1,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 2,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 3,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 4,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 5,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 6,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 7,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 8,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 9,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 10,
+            "size": 20,
+            "status": 1
+        },
+        {
+            "id": 11,
+            "size": 20,
+            "status": 0
+        }
+    ],
+    "updatedOn": 1719686827
+}
