@@ -103,14 +103,15 @@ void setup() {
 
   printI2cDevices();
 
-  if(!initSDCard()) {
+  bool sdOk = initSDCard();
+  if(!sdOk) {
     TRACE("SD not working\n");
     beep(4, 150);
   }
 
   JsonDocument config = readConfig();
 
-  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+  if (sdOk && !config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
     // Config is newer
     uint32_t updatedOn = config["updatedOn"];
     TRACE("rtc update: %u\n", rtc.now().unixtime());
@@ -125,6 +126,9 @@ void setup() {
       EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
       EEPROM.commit();
     }
+  } else if (sdOk && config["updatedOn"].isNull()) {
+    TRACE("updatedOn is Null!\n");
+    beep(5, 150);
   }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
@@ -772,11 +776,11 @@ void pumpWater(void *parameter) {
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
   // Turn off all outputs
   mcp.writeGPIOAB(0b1111111111111111);
-  vTaskDelay(10 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.pinMode(valve, OUTPUT);
   mcp.digitalWrite(valve, LOW);
   // Wait time to settle current and start the pump
-  vTaskDelay(250 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
   mcp.pinMode(PUMP1_PIN, OUTPUT);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
@@ -794,14 +798,18 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
       break;
     }
   }
-#if USE_SD_CARD == true
+#if defined(ENABLE_LOGGING)
   saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
 #endif
   // TOTAL_MILLILITRES = 0;
   FLOW_METER_PULSE_COUNT = 0;
   detachInterrupt(FLOW_METER_INTERRUPT);
-  // Turn all outputs off
-  mcp.writeGPIOAB(0b1111111111111111);
+  // Turn Pump Off
+  mcp.digitalWrite(PUMP1_PIN, HIGH);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Turn Valve Off
+  mcp.digitalWrite(valve, HIGH);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
 
 void waterPlants() {

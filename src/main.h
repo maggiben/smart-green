@@ -149,6 +149,10 @@ BaseType_t result = pdFALSE;
   #define ENABLE_HTTP
 #endif
 
+#ifndef ENABLE_LOGGING
+  #define ENABLE_LOGGING
+#endif
+
 static SemaphoreHandle_t i2c_mutex;
 
 /**

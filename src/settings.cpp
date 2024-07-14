@@ -257,6 +257,9 @@ String listLogFiles(const char* directory, int from, int to) {
 
 
 bool saveLog(DateTime now, String name, int id, int milliliters, int duration, const char* destinationFolder) {
+  if(!initSDCard()) {
+    return false;
+  }
   if (!createDirectoryIfNotExists(destinationFolder)) {
     return false;
   }
