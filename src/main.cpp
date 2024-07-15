@@ -103,15 +103,14 @@ void setup() {
 
   printI2cDevices();
 
-  bool sdOk = initSDCard();
-  if(!sdOk) {
+  if(!initSDCard()) {
     TRACE("SD not working\n");
     beep(4, 150);
   }
 
   JsonDocument config = readConfig();
 
-  if (sdOk && !config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
     // Config is newer
     uint32_t updatedOn = config["updatedOn"];
     TRACE("rtc update: %u\n", rtc.now().unixtime());
@@ -126,9 +125,8 @@ void setup() {
       EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
       EEPROM.commit();
     }
-  } else if (sdOk && config["updatedOn"].isNull()) {
+  } else {
     TRACE("updatedOn is Null!\n");
-    beep(5, 150);
   }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
@@ -774,13 +772,12 @@ void pumpWater(void *parameter) {
  * unsigned int duration in seconds
  */
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
-  // Turn off all outputs
-  mcp.writeGPIOAB(0b1111111111111111);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Open Valve
   mcp.pinMode(valve, OUTPUT);
   mcp.digitalWrite(valve, LOW);
-  // Wait time to settle current and start the pump
+  // Wait time to avoid current surge
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  // Start the pump
   mcp.pinMode(PUMP1_PIN, OUTPUT);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
