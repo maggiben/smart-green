@@ -50,6 +50,8 @@
 #include <ArduinoOTA.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include "soc/soc.h"            // For WRITE_PERI_REG
+#include "soc/rtc_cntl_reg.h"   // For RTC_CNTL_BROWN_OUT_REG
 #include "constants.h"
 #include "settings.h"
 
@@ -92,6 +94,9 @@ Adafruit_MCP23X17 mcp; // Address 0x20
 // Need a WebServer for http access on port 80.
 WebServer server(80);
 
+// Watering process status
+uint8_t WATERING_STATUS = 0;
+
 // Need a WebServer for http access on port 80.
 #ifndef server
   #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
@@ -102,6 +107,7 @@ WebServer server(80);
 
 TaskHandle_t webServerTaskHandle;
 TaskHandle_t otaTaskHandle;
+TaskHandle_t serialTaskHandle;
 // Use only core
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0;
@@ -122,6 +128,7 @@ BaseType_t result = pdFALSE;
 #endif
 
 #ifndef ENABLE_FLOW
+  #define ENABLE_FLOW
   volatile byte FLOW_METER_PULSE_COUNT                  = 0;
   volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
   unsigned long OLD_INT_TIME                            = 0;
@@ -149,11 +156,16 @@ BaseType_t result = pdFALSE;
   #define ENABLE_HTTP
 #endif
 
-#ifndef ENABLE_LOGGING
-  #define ENABLE_LOGGING
+// #ifndef ENABLE_LOGGING
+//   #define ENABLE_LOGGING
+// #endif
+
+#ifndef ENABLE_SERIAL_COMMANDS
+  #define ENABLE_SERIAL_COMMANDS
 #endif
 
-static SemaphoreHandle_t i2c_mutex;
+SemaphoreHandle_t i2cMutex;
+QueueHandle_t wateringStatusQueue;
 
 /**
  * Hardware Setup
@@ -197,12 +209,15 @@ void printLocalTime();
 void printRtcTime();
 void displayFlow();
 void displayTime();
+void serialLog(String message);
+void logWatering(const char* format, int valve, int TOTAL_MILLILITRES, int duration);
 
 /**
  * IO
  */
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
+void serialPortHandler(void *pvParameters);
 
 /**
  * Threads

@@ -46,7 +46,7 @@
 #define HOSTNAME_MAX_LENGTH               64      /* Max hostname length */
 #define SETTINGS_MAX_ALARMS               8       /* Max amount of settable alarms */
 #define SETTINGS_ALARM_STATES             2       /* 2 states on and off */
-#define SETTINGS_MAX_PLANTS               12      /* Maximun amount of allowed plants & valves */
+#define SETTINGS_MAX_PLANTS               03      /* Maximun amount of allowed plants & valves */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
 struct Alarm {
