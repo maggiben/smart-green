@@ -908,9 +908,9 @@ void serialPortHandler(void *pvParameters) {
       command.trim();
       if (command.equals("ping")) {
         serialLog(String("pong!"));
-      } else if (command.equals("beep")) {
+      } else if (command.startsWith("beep")) {
+        beep(2, 150);
         serialLog(String("beep!"));
-        beep(8, 40);
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
         if(xTaskCreate(

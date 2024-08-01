@@ -483,7 +483,7 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
 }
 
 void beep(uint8_t times, unsigned long delay) {
-  TRACE("beeping times: %d\n", times);
+  TRACE("beeping times: %d delay: %d\n", times, delay);
   pinMode(BUZZER_PIN, OUTPUT);
   for(uint8_t i = 0; i < times; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
