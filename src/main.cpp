@@ -141,15 +141,14 @@ void setup() {
 
   TRACE("settings.hostname %s\n", settings.hostname);
 
+  // Create a queue capable of holding 10 strings of up to 100 characters each
+  wateringStatusQueue = xQueueCreate(wateringStatusQueueLength, sizeof(WateringStatus));
     // Serial commander task
 #if defined(ENABLE_SERIAL_COMMANDS)
-  // Create a queue capable of holding 10 strings of up to 100 characters each
-  wateringStatusQueue = xQueueCreate(10, sizeof(char) * 256);
-
   xTaskCreatePinnedToCore(
     serialPortHandler,     // Task function
     "SerialPort",          // Name of the task (for debugging)
-    46000,                 // Stack size (in words, not bytes)
+    89000,                 // Stack size (in words, not bytes)
     NULL,                  // Task input parameter
     PRIORITY_HIGH,         // Priority of the task
     &serialTaskHandle,     // Task handle
@@ -713,7 +712,7 @@ void loop() {
       xTaskCreate(
         pumpWater,            // Task function
         "AlarmTask",          // Task name
-        8192,                 // Stack size (bytes)
+        46000,                // Stack size (bytes)
         NULL,                 // Task parameter
         tskIDLE_PRIORITY + 4, // Task priority (very high)
         &alarmTask            // Task handle
@@ -790,25 +789,47 @@ void pumpWater(void *parameter) {
   vTaskDelete(NULL);
 }
 
+void setWateringStatus(WateringStatus *status) {
+  // WateringStatus wateringStatus;
+  // wateringStatus.status = status->status;
+  // Try to add item to queue for 10 ticks, fail if queue is full
+  if (xQueueSend(wateringStatusQueue, status, portMAX_DELAY) != pdPASS) {
+    TRACE("wateringStatus queue full\n");
+  }
+}
+
+void stopWatering() {
+  // TOTAL_MILLILITRES = 0;
+  FLOW_METER_PULSE_COUNT = 0;
+  detachInterrupt(FLOW_METER_INTERRUPT);
+  // Turn Pump Off
+  mcp.writeGPIOAB(0b1111111111111111);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  setWateringStatus(0);
+}
+
 /*
  * unsigned int duration in seconds
  */
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
+  wateringStatus.plant = valve;
   // Open Valve
   mcp.pinMode(valve, OUTPUT);
   mcp.digitalWrite(valve, LOW);
   // Wait time to avoid current surge
   vTaskDelay(1000 / portTICK_PERIOD_MS);
-  TRACE(String("valve: " + String(valve) + " open\n").c_str());
-  WATERING_STATUS = 2;
+  wateringStatus.status = 2;
+  setWateringStatus(&wateringStatus);
   // Start the pump
   mcp.pinMode(PUMP1_PIN, OUTPUT);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
   pinMode(FLOW_METER_PIN, INPUT);
   pinMode(FLOW_METER_PIN, INPUT_PULLUP);
-  TRACE("pump energized\n");
-  WATERING_STATUS = 3;
+  wateringStatus.status = 3;
+  setWateringStatus(&wateringStatus);
   /*The Hall-effect sensor is connected to pin 
   2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
   (state to LOW state)*/
@@ -818,16 +839,17 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   FLOW_METER_PULSE_COUNT = 0;
   for(uint8_t i = 0; i < duration; i++) {
     calcFlow();
-    WATERING_STATUS = 4;
+    wateringStatus.flow = TOTAL_MILLILITRES;
+    wateringStatus.status = 4;
+    setWateringStatus(&wateringStatus);
     if (TOTAL_MILLILITRES > millilitres) {
       break;
     }
   }
+  END_INT_TIME = millis();
 #if defined(ENABLE_LOGGING)
   saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
 #endif
-  TRACE(String("finished watering plant: " + String(valve) + " total: " + String(TOTAL_MILLILITRES) + "ml duration:" + String(duration) + "\n").c_str());
-  WATERING_STATUS = 5;
   // TOTAL_MILLILITRES = 0;
   FLOW_METER_PULSE_COUNT = 0;
   detachInterrupt(FLOW_METER_INTERRUPT);
@@ -837,10 +859,17 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   // Turn Valve Off
   mcp.digitalWrite(valve, HIGH);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  wateringStatus.status = 5;
+  wateringStatus.duration = END_INT_TIME - START_INT_TIME;
+  setWateringStatus(&wateringStatus);
 }
 
 void waterPlants() {
-  WATERING_STATUS = 1; // Clear the watering status
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
+  
+  wateringStatus.status = 1;
+  setWateringStatus(&wateringStatus);
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
   for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
@@ -848,19 +877,9 @@ void waterPlants() {
       waterPlant(plant.id, 20, 250);
     }
   }
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout 
-  WATERING_STATUS = 0; // Clear the watering status
-}
-
-void logWatering(const char* format, int valve, int TOTAL_MILLILITRES, int duration) {
-  char message[100];
-  snprintf(message, sizeof(message), format, valve, TOTAL_MILLILITRES, duration);
-
-  TRACE(message);
-  // Send the message to the queue
-  if (xQueueSend(wateringStatusQueue, message, portMAX_DELAY) != pdPASS) {
-    TRACE("Failed to send to queue\n");
-  }
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
+  wateringStatus.status = 0;
+  setWateringStatus(&wateringStatus);
 }
 
 void serialLog(String message) {
@@ -872,9 +891,20 @@ void serialLog(String message) {
 // Function to handle serial communication in a FreeRTOS task
 void serialPortHandler(void *pvParameters) {
   uint8_t timer = 0;
+  TaskHandle_t alarmTask = NULL;
+  uint8_t status = 0;
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
   while (true) {
+    if (xQueueReceive(wateringStatusQueue, (void *)&wateringStatus, 0) == pdTRUE) {
+      if (status != wateringStatus.status) {
+        status = wateringStatus.status;
+      }
+    }
+
     if (Serial.available() > 0) {
       String command = Serial.readStringUntil('\n');
+      Serial.flush();
       command.trim();
       if (command.equals("ping")) {
         serialLog(String("pong!"));
@@ -883,10 +913,19 @@ void serialPortHandler(void *pvParameters) {
         beep(8, 40);
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
-        waterPlants();
-        serialLog(String("Finish watering plants!"));
+        if(xTaskCreate(
+          pumpWater,            // Task function
+          "AlarmTask",          // Task name
+          46000,                // Stack size (bytes)
+          NULL,                 // Task parameter
+          PRIORITY_HIGH,        // Task priority (very high)
+          &alarmTask            // Task handle
+        ) != pdPASS) {
+          serialLog(String("Task creation failed!"));
+        }
+        serialLog(String("Started watering plants!"));
       } else if (command.equals("watering-status")) {
-        serialLog(String("status: " + String(WATERING_STATUS)));
+        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow)));
       } else if (command.equals("time")) {
         DateTime now = rtc.now();
         Serial.printf("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());

@@ -95,7 +95,16 @@ Adafruit_MCP23X17 mcp; // Address 0x20
 WebServer server(80);
 
 // Watering process status
-uint8_t WATERING_STATUS = 0;
+struct WateringStatus {
+  uint8_t id;
+  uint8_t plant;
+  uint8_t flow;
+  uint8_t duration;
+  uint8_t status;
+};
+WateringStatus WATERING_STATUS;
+QueueHandle_t wateringStatusQueue;
+static const uint8_t wateringStatusQueueLength = 10;
 
 // Need a WebServer for http access on port 80.
 #ifndef server
@@ -133,6 +142,7 @@ BaseType_t result = pdFALSE;
   volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
   unsigned long OLD_INT_TIME                            = 0;
   unsigned long START_INT_TIME                          = 0;
+  unsigned long END_INT_TIME                            = 0;
   float FLOW_RATE                                       = 0.0;
   unsigned int FLOW_MILLILITRES                         = 0;
   unsigned long TOTAL_MILLILITRES                       = 0;
@@ -165,7 +175,6 @@ BaseType_t result = pdFALSE;
 #endif
 
 SemaphoreHandle_t i2cMutex;
-QueueHandle_t wateringStatusQueue;
 
 /**
  * Hardware Setup
@@ -210,7 +219,7 @@ void printRtcTime();
 void displayFlow();
 void displayTime();
 void serialLog(String message);
-void logWatering(const char* format, int valve, int TOTAL_MILLILITRES, int duration);
+void setWateringStatus(WateringStatus *wateringStatus);
 
 /**
  * IO
@@ -218,6 +227,7 @@ void logWatering(const char* format, int valve, int TOTAL_MILLILITRES, int durat
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
 void serialPortHandler(void *pvParameters);
+void stopWatering();
 
 /**
  * Threads
