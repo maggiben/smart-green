@@ -98,8 +98,8 @@ WebServer server(80);
 struct WateringStatus {
   uint8_t id;
   uint8_t plant;
-  uint8_t flow;
-  uint8_t duration;
+  uint32_t flow;
+  uint32_t duration;
   uint8_t status;
 };
 WateringStatus WATERING_STATUS;
@@ -228,7 +228,7 @@ void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
 void serialPortHandler(void *pvParameters);
 void stopWatering();
-
+uint32_t calculateWateringDuration(uint8_t potSize);
 /**
  * Threads
  */

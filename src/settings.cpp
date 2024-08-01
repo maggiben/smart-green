@@ -400,7 +400,6 @@ bool isAlarmOn(Settings settings, DateTime now) {
   return false;
 }
 
-
 bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonArray alarmArray = json["alarm"].as<JsonArray>();
   int numAlarms = alarmArray.size();
@@ -408,6 +407,9 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
     TRACE("Exceeded maximum number of alarms\n");
     return false;
   }
+
+  // Clean all alarms
+  memset(alarm, 0, sizeof(Alarm) * SETTINGS_MAX_ALARMS * SETTINGS_ALARM_STATES);
 
   for (int alarmIndex = 0; alarmIndex < numAlarms; alarmIndex++) {
     JsonArray alarmData = alarmArray[alarmIndex].as<JsonArray>();
@@ -453,6 +455,9 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
     TRACE("Exceeded maximum number of plants\n");
     return false;
   }
+
+  // Clean all alarms
+  memset(plants, 0, sizeof(Plant) * SETTINGS_MAX_PLANTS);
 
   for (int plantIndex = 0; plantIndex < numPlant; plantIndex++) {
     JsonObject plantData = plantArray[plantIndex].as<JsonObject>();

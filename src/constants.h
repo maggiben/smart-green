@@ -56,7 +56,8 @@
 #define PUMP2_PIN                   13
 #define FLOW_METER_PIN              33
 #define FLOW_METER_INTERRUPT        06
-#define FLOW_CALIBRATION_FACTOR     220
+#define FLOW_CALIBRATION_FACTOR     220 // Flow calibration factor
+#define WATER_PUMP_ML_PER_MINUTE    600 // Water pump flow in milliliter per minute  
 #define USE_DISPLAY                 true
 #define USE_RTC                     true
 #define USE_EEPROM                  true

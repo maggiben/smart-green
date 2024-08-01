@@ -864,6 +864,11 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   setWateringStatus(&wateringStatus);
 }
 
+uint32_t calculateWateringDuration(uint8_t potSize) {
+  uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
+  return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
+}
+
 void waterPlants() {
   struct WateringStatus wateringStatus;
   memset(&wateringStatus, 0, sizeof(WateringStatus));
@@ -874,7 +879,7 @@ void waterPlants() {
   for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
     if (plant.status == 1) {
-      waterPlant(plant.id, 20, 250);
+      waterPlant(plant.id, calculateWateringDuration(plant.size), (((plant.size * 1000) / 10 ) / 4));
     }
   }
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
@@ -931,6 +936,11 @@ void serialPortHandler(void *pvParameters) {
         Serial.printf("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
       } else if (command.equals("alarm")) {
         serialLog(getAlarms(settings));
+      } else if (command.equals("plants")) {
+        serialLog(getPlants(settings));
+      } else if (command.equals("restart")) {
+        serialLog(String("Restarting!"));
+        ESP.restart();
       } else if (command.startsWith("next-alarm")) {
         time_t futureTime;
         DateTime now = rtc.now();
