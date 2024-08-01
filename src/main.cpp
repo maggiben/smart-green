@@ -931,6 +931,17 @@ void serialPortHandler(void *pvParameters) {
         Serial.printf("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
       } else if (command.equals("alarm")) {
         serialLog(getAlarms(settings));
+      } else if (command.startsWith("next-alarm")) {
+        time_t futureTime;
+        DateTime now = rtc.now();
+        uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
+        
+        
+        futureTime = now.unixtime() + minTimeToNextAlarm;
+        // Convert to Unix time
+        char buffer[28];
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&futureTime));
+        serialLog(String("nextAlarmSecs: " + String(minTimeToNextAlarm) + " nextAlarm: " + String(buffer)));
       } else if (command.length() > 0) {
         serialLog(String("Invalid command"));
       } else {
