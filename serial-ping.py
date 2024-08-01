@@ -41,7 +41,7 @@ def send_ping_and_get_response():
 
         # Print the response
         if response: 
-            print(f"response: {response}")
+            print(response)
 
         # Close the serial port
         ser.close()
