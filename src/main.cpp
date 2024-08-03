@@ -118,12 +118,12 @@ void setup() {
     TRACE("old update: %u\n", settings.updatedOn);
     if(settings.updatedOn < updatedOn) {
       TRACE("Flashing new config!\n");
-      beep(4, 50);
       savePlants(config, settings.plant);
       saveAlarms(config, settings.alarm);
       settings.updatedOn = updatedOn;
       EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
       EEPROM.commit();
+      beep(4, 50);
     }
   } else {
     TRACE("updatedOn is Null!\n");
@@ -274,6 +274,46 @@ void calcFlow() {
     FLOW_METER_PULSE_COUNT = 0;
     // Enable the interrupt again now that we've finished sending output
     attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+  }
+  // yield 
+  vTaskDelay(10 / portTICK_PERIOD_MS);
+}
+
+void calcFlowGpt() {
+  // Note the time this processing pass was executed.
+  unsigned long startTime = millis();
+  unsigned long elapsedTime = 0;
+
+  while (elapsedTime < 1000) {
+    // Disable the interrupt while calculating flow rate and sending the value to the host
+    detachInterrupt(FLOW_METER_INTERRUPT);
+
+    // Calculate elapsed time
+    elapsedTime = millis() - startTime;
+
+    // Calculate flow rate considering the elapsed time
+    FLOW_RATE = ((1000.0 / elapsedTime) * FLOW_METER_PULSE_COUNT) / FLOW_CALIBRATION_FACTOR;
+
+    // Calculate millilitres passed in this interval
+    FLOW_MILLILITRES = FLOW_METER_PULSE_COUNT == 0 ? 0 : (FLOW_RATE / 60) * 1000;
+
+    // Add the millilitres passed in this interval to the cumulative total
+    TOTAL_MILLILITRES += FLOW_MILLILITRES;
+
+    // Display flow
+    displayFlow();
+
+    // Reset the pulse counter so we can start incrementing again
+    FLOW_METER_PULSE_COUNT = 0;
+
+    // Enable the interrupt again now that we've finished sending output
+    attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+
+    // Yield and delay
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+
+    // Recalculate elapsed time for the next loop iteration
+    elapsedTime = millis() - startTime;
   }
 }
 
@@ -714,7 +754,7 @@ void loop() {
         "AlarmTask",          // Task name
         46000,                // Stack size (bytes)
         NULL,                 // Task parameter
-        tskIDLE_PRIORITY + 4, // Task priority (very high)
+        PRIORITY_HIGH,        // Task priority (high)
         &alarmTask            // Task handle
       );
     } else if (settings.hasDisplay && activateAlarm <= -1 || !IS_ALARM_ON) {
@@ -860,6 +900,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   mcp.digitalWrite(valve, HIGH);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   wateringStatus.status = 5;
+  wateringStatus.flow = TOTAL_MILLILITRES;
   wateringStatus.duration = END_INT_TIME - START_INT_TIME;
   setWateringStatus(&wateringStatus);
 }
@@ -883,7 +924,7 @@ void waterPlants() {
     }
   }
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
-  wateringStatus.status = 0;
+  wateringStatus.status = WATERING_STATUS_COMPLTE;
   setWateringStatus(&wateringStatus);
 }
 
@@ -897,7 +938,7 @@ void serialLog(String message) {
 void serialPortHandler(void *pvParameters) {
   uint8_t timer = 0;
   TaskHandle_t alarmTask = NULL;
-  uint8_t status = 0;
+  uint8_t status;
   struct WateringStatus wateringStatus;
   memset(&wateringStatus, 0, sizeof(WateringStatus));
   while (true) {
@@ -931,6 +972,13 @@ void serialPortHandler(void *pvParameters) {
         serialLog(String("Started watering plants!"));
       } else if (command.equals("watering-status")) {
         serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow)));
+        if (wateringStatus.status == 128) {
+          memset(&wateringStatus, 0, sizeof(WateringStatus));
+          setWateringStatus(&wateringStatus);
+        }
+      } else if (command.equals("plant")) {
+        settings.plant[0].size = 20;
+        serialLog("duration: " + String(calculateWateringDuration(settings.plant[0].size)) + " total: " + String( (((settings.plant[0].size * 1000) / 10 ) / 4)) + " calibration: " + String(FLOW_CALIBRATION_FACTOR));
       } else if (command.equals("time")) {
         DateTime now = rtc.now();
         Serial.printf("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
@@ -941,11 +989,26 @@ void serialPortHandler(void *pvParameters) {
       } else if (command.equals("restart")) {
         serialLog(String("Restarting!"));
         ESP.restart();
+      } else if (command.equals("trigger-alarm")) {
+        DateTime now = rtc.now();
+        settings.alarm[0][0].weekday = 1 << now.dayOfTheWeek();
+        settings.alarm[0][0].hour = now.hour();
+        settings.alarm[0][0].minute = now.minute() < 59 ? now.minute() + 1 : 1;
+        settings.alarm[0][0].status = 1;
+
+        settings.alarm[0][1].weekday = 1 << now.dayOfTheWeek();
+        settings.alarm[0][1].hour = now.hour();
+        settings.alarm[0][1].minute = settings.alarm[0][0].minute < 59 ? settings.alarm[0][0].minute + 1 : 1;
+        settings.alarm[0][1].status = 1;
+
+        serialLog(String("Alarm set to 1 minute"));
+      } else if (command.equals("logs")) {
+        initSDCard();
+        serialLog(String("Log count: " + String(getLogCount("/logs"))));
       } else if (command.startsWith("next-alarm")) {
         time_t futureTime;
         DateTime now = rtc.now();
         uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
-        
         
         futureTime = now.unixtime() + minTimeToNextAlarm;
         // Convert to Unix time

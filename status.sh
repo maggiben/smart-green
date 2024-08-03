@@ -24,7 +24,7 @@ while true; do
         status_value=$(echo "$output" | awk -F'>' '{print $2}' | awk -F' ' '{print $4}')
   
         # Check if status_value is not empty before comparing
-        if [ -n "$status_value" ] && [ "$status_value" -le 1 ]; then
+        if [ -n "$status_value" ] && [ "$status_value" -eq 128 ]; then
             break
         fi
     else
@@ -32,13 +32,12 @@ while true; do
         sleep 1
     fi
 done
-echo "Watering complete"
 # Prepare the final message with the max flow values for each plant
 message="😀 I finished watering the plants:"
 for plant in "${!max_flows[@]}"; do
   message+=" plant $plant (${max_flows[$plant]}ml)"
 done
 
-echo -e "$message"
 ./pyenv/bin/python3 ./telegram-bot.py "$message"
 
+echo -e "$message"

@@ -42,14 +42,15 @@
 #include <ArduinoJson.h>
 #include "constants.h"
 
-#define SETTINGS_ADDRESS                  0       /* Active plants (battery backed ram address) */
+#define EEPROM_SETTINGS_ADDRESS           0       /* Active plants (battery backed ram address) */
 #define HOSTNAME_MAX_LENGTH               64      /* Max hostname length */
 #define SETTINGS_MAX_ALARMS               8       /* Max amount of settable alarms */
 #define SETTINGS_ALARM_STATES             2       /* 2 states on and off */
-#define SETTINGS_MAX_PLANTS               11      /* Maximun amount of allowed plants & valves */
+#define SETTINGS_MAX_PLANTS               1       /* Maximun amount of allowed plants & valves */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
 struct Alarm {
+  uint8_t id;
   uint8_t weekday;
   uint8_t hour;
   uint8_t minute;
@@ -60,6 +61,15 @@ struct Plant {
   uint8_t id;
   uint8_t size;
   uint8_t status;
+};
+
+
+struct TaskLog {
+  Alarm alarm;
+  uint32_t updatedOn;
+  uint32_t flow[SETTINGS_MAX_PLANTS]; 
+  uint8_t lastExecutionId;
+  uint8_t nextExecutionId;
 };
 
 struct Settings {
@@ -73,6 +83,7 @@ struct Settings {
   Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES];
   uint8_t maxPlants;
   Plant plant[SETTINGS_MAX_PLANTS];
+  TaskLog taskLog;
   bool hasDisplay;
   bool hasRTC;
   bool hasEEPROM;

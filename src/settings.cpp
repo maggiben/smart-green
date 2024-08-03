@@ -36,12 +36,12 @@
 #include "settings.h"
 
 void saveSettings(Settings* settings) {
-  EEPROM.put(SETTINGS_ADDRESS, settings);
+  EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
   EEPROM.commit();
 }
 
 void readSettings(Settings* settings) {
-  EEPROM.get(SETTINGS_ADDRESS, settings);
+  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
 }
 
 void printI2cDevices(byte* devices) {
@@ -93,6 +93,7 @@ String getAlarms(Settings settings) {
     for (int j = 0; j < SETTINGS_ALARM_STATES; j++) {
       result += "{";
       
+        result += "  \"id\": " + String(settings.alarm[i][j].id) + ",\n";
         result += "  \"weekday\": " + String(settings.alarm[i][j].weekday) + ",\n";
         result += "  \"hour\": " + String(settings.alarm[i][j].hour) + ",\n";
         result += "  \"minute\": " + String(settings.alarm[i][j].minute) + ",\n";
@@ -133,8 +134,6 @@ String getPlants(Settings settings) {
 }
 
 bool initSDCard() {
-  // pinMode(SS, OUTPUT);
-  // digitalWrite(SS, HIGH); // Set SS pin high initially
   if(!SD.begin(SS)) {
     TRACE("Card Mount Failed\n");
     return false;
@@ -427,6 +426,7 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
         return false;
       }
 
+      uint8_t id = alarmSetting["id"];
       uint8_t weekday = alarmSetting["weekday"];
       uint8_t hour = alarmSetting["hour"];
       uint8_t minute = alarmSetting["minute"];
@@ -439,6 +439,7 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
       }
 
       // Store the alarm settings
+      alarm[alarmIndex][i].id = id;
       alarm[alarmIndex][i].weekday = weekday;
       alarm[alarmIndex][i].hour = hour;
       alarm[alarmIndex][i].minute = minute;
@@ -475,7 +476,7 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
 
     // Validate hour, minute, and active values
     if (id < 0 || size < 0) {
-      TRACE("Invalid alarm settings\n");
+      TRACE("Invalid plant settings\n");
       return false;
     }
 

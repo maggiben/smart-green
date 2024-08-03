@@ -75,6 +75,8 @@ Settings settings = {
   SETTINGS_MAX_PLANTS,
   // Plant settings
   {{0}},
+  // TaskLog
+  {0},
   // Attemp to use Graphical Display
   USE_DISPLAY,
   USE_RTC,
