@@ -46,7 +46,7 @@
 #define HOSTNAME_MAX_LENGTH               64      /* Max hostname length */
 #define SETTINGS_MAX_ALARMS               8       /* Max amount of settable alarms */
 #define SETTINGS_ALARM_STATES             2       /* 2 states on and off */
-#define SETTINGS_MAX_PLANTS               1       /* Maximun amount of allowed plants & valves */
+#define SETTINGS_MAX_PLANTS               4       /* Maximun amount of allowed plants & valves */
 #define SETTINGS_REBOOT_ON_WIFIFAIL       false   /* Reset if wifi fails 0 = false 1 = true */
 
 struct Alarm {
@@ -125,6 +125,7 @@ const char* getResetReason();
 bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]);
 int getActiveAlarmId(Settings settings, DateTime now);
 bool isAlarmOn(Settings settings, DateTime now);
+int getNextAlarmId(Settings settings, DateTime now);
 
 /**
  * File management
@@ -142,7 +143,8 @@ void turnOnPin(Adafruit_MCP23X17 mcp, int pinNumber);
  * Plant functions
  */
 bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]);
-
+uint32_t calculateWateringDuration(uint8_t potSize);
+uint32_t getTotalWateringTime(Settings settings);
 
 
 

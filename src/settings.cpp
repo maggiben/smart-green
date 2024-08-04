@@ -116,6 +116,19 @@ String getAlarms(Settings settings) {
 }
 
 
+// uint32_t calculateWateringDuration(uint8_t potSize) {
+//   uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
+//   return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
+// }
+
+uint32_t getTotalWateringTime(Settings settings) {
+  uint32_t result = 0;
+  for (int i = 0; i < SETTINGS_MAX_PLANTS; i++) {
+    result += calculateWateringDuration(settings.plant[i].size);
+  }
+  return result;
+}
+
 String getPlants(Settings settings) {
   String result = "[";
 
@@ -321,6 +334,7 @@ int getActiveAlarmId(Settings settings, DateTime now) {
     // Check if the alarm is active (alarm[alarmNumber][0] == 1)
     if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
       // Extract alarm time components
+      uint8_t alarmId = settings.alarm[i][0].id;
       uint8_t alarmWeekday = settings.alarm[i][0].weekday;
       uint8_t startAlarmHour = settings.alarm[i][0].hour;
       uint8_t startAlarmMinute = settings.alarm[i][0].minute;
@@ -336,7 +350,7 @@ int getActiveAlarmId(Settings settings, DateTime now) {
           if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
             // Alarm is active
             if (status == 1) {
-              return i;
+              return alarmId;
               break;
             }
           }
@@ -350,6 +364,48 @@ int getActiveAlarmId(Settings settings, DateTime now) {
 // Helper function to calculate seconds from hours, minutes, and seconds
 uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds) {
   return hours * 3600 + minutes * 60 + seconds;
+}
+
+int getNextAlarmId(Settings settings, DateTime now) {
+  uint32_t minTimeToNextAlarm = UINT_MAX; // Initialize with maximum possible value
+  int nextAlarmId = -1; // Initialize with -1 to indicate no alarm found
+  uint32_t currentTimeInSeconds = toSeconds(now.hour(), now.minute(), now.second());
+  uint8_t currentDayOfWeek = now.dayOfTheWeek();
+
+  for (uint8_t i = 0; i < SETTINGS_MAX_ALARMS; i++) {
+    if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
+      uint8_t alarmWeekdayMask = settings.alarm[i][0].weekday;
+      uint8_t startAlarmHour = settings.alarm[i][0].hour;
+      uint8_t startAlarmMinute = settings.alarm[i][0].minute;
+      uint8_t startAlarmSecond = 0; // Assuming seconds are not stored, default to 0
+
+      uint32_t alarmTimeInSeconds = toSeconds(startAlarmHour, startAlarmMinute, startAlarmSecond);
+
+      for (uint8_t dayOffset = 0; dayOffset < 7; dayOffset++) {
+        uint8_t dayToCheck = (currentDayOfWeek + dayOffset) % 7;
+        uint8_t dayMask = 1 << dayToCheck;
+
+        if ((alarmWeekdayMask & dayMask) != 0) {
+          uint32_t timeToNextAlarm;
+
+          if (dayOffset == 0 && alarmTimeInSeconds > currentTimeInSeconds) {
+            // Same day, future time
+            timeToNextAlarm = alarmTimeInSeconds - currentTimeInSeconds;
+          } else {
+            // Future days
+            timeToNextAlarm = (86400 * dayOffset) + alarmTimeInSeconds - currentTimeInSeconds;
+          }
+
+          if (timeToNextAlarm < minTimeToNextAlarm) {
+            minTimeToNextAlarm = timeToNextAlarm;
+            nextAlarmId = settings.alarm[i][0].id; // Update the next alarm ID
+          }
+        }
+      }
+    }
+  }
+
+  return nextAlarmId;
 }
 
 uint32_t getNextAlarmTime(Settings settings, DateTime now) {
