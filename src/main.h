@@ -68,7 +68,7 @@ Settings settings = {
   // Assuming reboot on wifi failed is false
   SETTINGS_REBOOT_ON_WIFIFAIL,
   // Flow calibration value
-  FLOW_CALIBRATION_FACTOR,
+  0, // FLOW_CALIBRATION_FACTOR
   // Initializing alarms all to 0 (disabled)
   {{{0}}},
   // Max Plants
@@ -147,7 +147,7 @@ BaseType_t result = pdFALSE;
   unsigned long END_INT_TIME                            = 0;
   float FLOW_RATE                                       = 0.0;
   unsigned int FLOW_MILLILITRES                         = 0;
-  unsigned long TOTAL_MILLILITRES                       = 0;
+  uint32_t TOTAL_MILLILITRES                            = 0;
   uint8_t FLOW_SENSOR_STATE                             = HIGH;
 #endif
 
