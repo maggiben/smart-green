@@ -156,7 +156,7 @@ void setup() {
   );
 #endif
 
-#if defined(ONLINE)
+#if defined(WIFI_ENABLED)
   String ssid = config["network"]["ssid"].isNull() ? WIFI_SSID : config["network"]["ssid"].as<String>();
   String password = config["network"]["password"].isNull() ? WIFI_PASSWORD : config["network"]["password"].as<String>();
   bool enabled = config["network"]["enabled"].isNull() ? WIFI_ENABLED : config["network"]["enabled"].as<bool>();
@@ -969,6 +969,14 @@ void serialPortHandler(void *pvParameters) {
         } else {
           Serial.println("Failed to set RTC.");
         }
+      } else if (command.startsWith("set-plants:")) {
+        String jsonString = command.substring(8);
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, jsonString);
+        if (error) {
+          serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
+        }
+        serialLog(getPlants(settings));
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
         if(xTaskCreate(

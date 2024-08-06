@@ -156,8 +156,8 @@ BaseType_t result = pdFALSE;
   byte DISPLAY_INFO_DATA = 0;
 #endif
 
-// #ifndef ONLINE
-//   #define ONLINE
+// #ifndef WIFI_ENABLED
+//   #define WIFI_ENABLED
 // #endif
 
 // #ifndef ENABLE_OTA
