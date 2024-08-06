@@ -116,10 +116,10 @@ String getAlarms(Settings settings) {
 }
 
 
-// uint32_t calculateWateringDuration(uint8_t potSize) {
-//   uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
-//   return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
-// }
+uint32_t calculateWateringDuration(uint8_t potSize) {
+  uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
+  return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
+}
 
 uint32_t getTotalWateringTime(Settings settings) {
   uint32_t result = 0;
@@ -752,4 +752,26 @@ String settingsToJson(const Settings& settings) {
   serializeJson(doc, jsonString);
 
   return jsonString;
+}
+
+bool setRTCFromISODate(String isoDate, RTC_DS3231 rtc) {
+  // Expected format: YYYY-MM-DDTHH:MM:SS use date +"%Y-%m-%dT%H:%M:%S"
+  if (isoDate.length() != 19) {
+    return false;
+  }
+
+  int year = isoDate.substring(0, 4).toInt();
+  int month = isoDate.substring(5, 7).toInt();
+  int day = isoDate.substring(8, 10).toInt();
+  int hour = isoDate.substring(11, 13).toInt();
+  int minute = isoDate.substring(14, 16).toInt();
+  int second = isoDate.substring(17, 19).toInt();
+
+  if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+      return false;
+  }
+
+  rtc.adjust(DateTime(year, month, day, hour, minute, second));
+  return true;
 }

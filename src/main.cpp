@@ -159,10 +159,11 @@ void setup() {
 #if defined(ONLINE)
   String ssid = config["network"]["ssid"].isNull() ? WIFI_SSID : config["network"]["ssid"].as<String>();
   String password = config["network"]["password"].isNull() ? WIFI_PASSWORD : config["network"]["password"].as<String>();
+  bool enabled = config["network"]["enabled"].isNull() ? WIFI_ENABLED : config["network"]["enabled"].as<bool>();
   TRACE("ssid: %s\n", ssid.c_str());
   TRACE("password: %s\n", password.c_str());
   TRACE("config: %s\n", config.as<String>().c_str());
-  if (config["network"]["enabled"].as<bool>() && connectToWiFi(ssid.c_str(), password.c_str())) {
+  if (enabled && connectToWiFi(ssid.c_str(), password.c_str())) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Wifi Connected: IP: %s - Hostname: %s\n", WiFi.localIP().toString().c_str(), WiFi.getHostname());
@@ -461,7 +462,7 @@ void syncRTC() {
   DateTime dateTime = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   rtc.adjust(dateTime);
   settings.lastDateTimeSync = rtc.now().unixtime();
-  settings.updatedOn = rtc.now().unixtime();
+  // settings.updatedOn = rtc.now().unixtime();
   EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
   EEPROM.commit();
   TRACE("RTC synced with NTP time\n");
@@ -906,11 +907,6 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   setWateringStatus(&wateringStatus);
 }
 
-uint32_t calculateWateringDuration(uint8_t potSize) {
-  uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
-  return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
-}
-
 void waterPlants() {
   struct WateringStatus wateringStatus;
   memset(&wateringStatus, 0, sizeof(WateringStatus));
@@ -950,6 +946,7 @@ void serialPortHandler(void *pvParameters) {
   uint8_t status;
   struct WateringStatus wateringStatus;
   memset(&wateringStatus, 0, sizeof(WateringStatus));
+  Serial.flush();
   while (true) {
     if (xQueueReceive(wateringStatusQueue, (void *)&wateringStatus, 0) == pdTRUE) {
       if (status != wateringStatus.status) {
@@ -959,13 +956,19 @@ void serialPortHandler(void *pvParameters) {
 
     if (Serial.available() > 0) {
       String command = Serial.readStringUntil('\n');
-      Serial.flush();
       command.trim();
       if (command.equals("ping")) {
         serialLog(String("pong!"));
       } else if (command.startsWith("beep")) {
         beep(2, 150);
         serialLog(String("beep!"));
+      } else if (command.startsWith("set-rtc:")) {
+        String isoDate = command.substring(8);
+        if (setRTCFromISODate(isoDate, rtc)) {
+          Serial.println("RTC set successfully.");
+        } else {
+          Serial.println("Failed to set RTC.");
+        }
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
         if(xTaskCreate(
@@ -1018,16 +1021,26 @@ void serialPortHandler(void *pvParameters) {
         ESP.restart();
       } else if (command.equals("trigger-alarm")) {
         DateTime now = rtc.now();
-        settings.alarm[0][0].id = 33;
-        settings.alarm[0][0].weekday = 1 << now.dayOfTheWeek();
-        settings.alarm[0][0].hour = now.hour();
-        settings.alarm[0][0].minute = now.minute() < 59 ? now.minute() + 1 : 1;
-        settings.alarm[0][0].status = 1;
+        
+        DateTime alarmTime_start = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_end = now + TimeSpan(0, 0, 3, 0); // Adding 2 minutes (120 seconds)
 
-        settings.alarm[0][1].weekday = 1 << now.dayOfTheWeek();
-        settings.alarm[0][1].hour = now.hour();
-        settings.alarm[0][1].minute = settings.alarm[0][0].minute < 59 ? settings.alarm[0][0].minute + 1 : 1;
-        settings.alarm[0][1].status = 1;
+        for (uint8_t i = 0; i < 2; i++) {
+          settings.alarm[i][0].id = 33;
+          settings.alarm[i][0].weekday = 1 << alarmTime_start.dayOfTheWeek();
+          settings.alarm[i][0].hour = alarmTime_start.hour();
+          settings.alarm[i][0].minute = alarmTime_start.minute();
+          settings.alarm[i][0].status = 1;
+
+          settings.alarm[i][0].id = 33;
+          settings.alarm[i][1].weekday = 1 << alarmTime_end.dayOfTheWeek();
+          settings.alarm[i][1].hour = alarmTime_end.hour();
+          settings.alarm[i][1].minute = alarmTime_end.minute();
+          settings.alarm[i][1].status = 1;
+
+          alarmTime_start = now + TimeSpan(0, 0, i + 4, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
+          alarmTime_end = now + TimeSpan(0, 0, i + 5, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
+        }
 
         serialLog(String("Alarm set to 1 minute"));
       } else if (command.equals("logs")) {
@@ -1055,6 +1068,7 @@ void serialPortHandler(void *pvParameters) {
     } else {
       timer += 1;
     }
+    Serial.flush();
     vTaskDelay(10 / portTICK_PERIOD_MS);  // Small delay to yield task
   }
 }

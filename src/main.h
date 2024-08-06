@@ -156,17 +156,17 @@ BaseType_t result = pdFALSE;
   byte DISPLAY_INFO_DATA = 0;
 #endif
 
-#ifndef ONLINE
-  #define ONLINE
-#endif
+// #ifndef ONLINE
+//   #define ONLINE
+// #endif
 
-#ifndef ENABLE_OTA
-  #define ENABLE_OTA
-#endif
+// #ifndef ENABLE_OTA
+//   #define ENABLE_OTA
+// #endif
 
-#ifndef ENABLE_HTTP
-  #define ENABLE_HTTP
-#endif
+// #ifndef ENABLE_HTTP
+//   #define ENABLE_HTTP
+// #endif
 
 // #ifndef ENABLE_LOGGING
 //   #define ENABLE_LOGGING
