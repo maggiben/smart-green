@@ -880,9 +880,15 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   FLOW_METER_PULSE_COUNT = 0;
   for(uint8_t i = 0; i < duration; i++) {
     calcFlow();
+    noInterrupts(); // disable interrups
     wateringStatus.flow = TOTAL_MILLILITRES;
+    wateringStatus.pulses = FLOW_METER_PULSE_COUNT;
+    interrupts(); // Enable interrupts
+    wateringStatus.duration = (millis() - START_INT_TIME) / 1000;
     wateringStatus.status = 4;
+    // wateringStatus.message = String("plant: " + String(valve) + " pulses: " + String(FLOW_METER_PULSE_COUNT) + " milliliters: " + String(TOTAL_MILLILITRES) + " duration: " + String((millis() - START_INT_TIME) / 1000));
     setWateringStatus(&wateringStatus);
+    // TRACE("plant: %d pulses: %d milliliters: %d cpy: %d second: %d =>", valve, FLOW_METER_PULSE_COUNT, TOTAL_MILLILITRES, wateringStatus.flow, i);
     // if (TOTAL_MILLILITRES > millilitres) {
     //   break;
     // }
@@ -891,7 +897,6 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
 #if defined(ENABLE_LOGGING)
   saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
 #endif
-  settings.taskLog.flow[valve] += TOTAL_MILLILITRES;
   // TOTAL_MILLILITRES = 0;
   FLOW_METER_PULSE_COUNT = 0;
   detachInterrupt(FLOW_METER_INTERRUPT);
@@ -902,8 +907,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   mcp.digitalWrite(valve, HIGH);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   wateringStatus.status = 5;
-  wateringStatus.flow = TOTAL_MILLILITRES;
-  wateringStatus.duration = END_INT_TIME - START_INT_TIME;
+  wateringStatus.duration = (END_INT_TIME - START_INT_TIME) / 1000;
   setWateringStatus(&wateringStatus);
 }
 
@@ -916,10 +920,10 @@ void waterPlants() {
   int activeAlarmId = getActiveAlarmId(settings, rtc.now());
   settings.taskLog.lastExecutionId = activeAlarmId;
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
-  for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
+  for(uint8_t plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
     if (plant.status == 1) {
-      waterPlant(plant.id, calculateWateringDuration(plant.size), (((plant.size * 1000) / 10 ) / 4));
+      waterPlant(plantIndex, /* calculateWateringDuration(plant.size) */ 60, (((plant.size * 1000) / 10 ) / 4));
     }
   }
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
@@ -944,9 +948,9 @@ void serialPortHandler(void *pvParameters) {
   uint8_t timer = 0;
   TaskHandle_t alarmTask = NULL;
   uint8_t status;
+  Serial.flush();
   struct WateringStatus wateringStatus;
   memset(&wateringStatus, 0, sizeof(WateringStatus));
-  Serial.flush();
   while (true) {
     if (xQueueReceive(wateringStatusQueue, (void *)&wateringStatus, 0) == pdTRUE) {
       if (status != wateringStatus.status) {
@@ -956,6 +960,7 @@ void serialPortHandler(void *pvParameters) {
 
     if (Serial.available() > 0) {
       String command = Serial.readStringUntil('\n');
+      Serial.flush();
       command.trim();
       if (command.equals("ping")) {
         serialLog(String("pong!"));
@@ -992,7 +997,7 @@ void serialPortHandler(void *pvParameters) {
         }
         serialLog(String("Started watering plants!"));
       } else if (command.equals("watering-status")) {
-        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow)));
+        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow) + " duration: " + String(wateringStatus.duration)));
         if (wateringStatus.status == 128) {
           memset(&wateringStatus, 0, sizeof(WateringStatus));
           setWateringStatus(&wateringStatus);
@@ -1031,10 +1036,10 @@ void serialPortHandler(void *pvParameters) {
       } else if (command.equals("trigger-alarm")) {
         DateTime now = rtc.now();
         
-        DateTime alarmTime_start = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
-        DateTime alarmTime_end = now + TimeSpan(0, 0, 3, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_start = now + TimeSpan(0, 0, 1, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_end = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
 
-        for (uint8_t i = 0; i < 2; i++) {
+        for (uint8_t i = 0; i < 1; i++) {
           settings.alarm[i][0].id = 33;
           settings.alarm[i][0].weekday = 1 << alarmTime_start.dayOfTheWeek();
           settings.alarm[i][0].hour = alarmTime_start.hour();
@@ -1047,8 +1052,8 @@ void serialPortHandler(void *pvParameters) {
           settings.alarm[i][1].minute = alarmTime_end.minute();
           settings.alarm[i][1].status = 1;
 
-          alarmTime_start = now + TimeSpan(0, 0, i + 4, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
-          alarmTime_end = now + TimeSpan(0, 0, i + 5, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
+          alarmTime_start = now + TimeSpan(0, 0, i + 3, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
+          alarmTime_end = now + TimeSpan(0, 0, i + 4, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
         }
 
         serialLog(String("Alarm set to 1 minute"));

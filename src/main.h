@@ -100,11 +100,12 @@ WebServer server(80);
 struct WateringStatus {
   uint8_t id;
   uint8_t plant;
-  uint32_t flow;
+  volatile uint32_t flow;
+  volatile uint32_t pulses;
   uint32_t duration;
   uint8_t status;
+  String message;
 };
-WateringStatus WATERING_STATUS;
 QueueHandle_t wateringStatusQueue;
 static const uint8_t wateringStatusQueueLength = 10;
 
@@ -142,13 +143,13 @@ BaseType_t result = pdFALSE;
   #define ENABLE_FLOW
   volatile byte FLOW_METER_PULSE_COUNT                  = 0;
   volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
-  unsigned long OLD_INT_TIME                            = 0;
+  volatile unsigned long OLD_INT_TIME                   = 0;
   unsigned long START_INT_TIME                          = 0;
   unsigned long END_INT_TIME                            = 0;
-  float FLOW_RATE                                       = 0.0;
+  volatile float FLOW_RATE                              = 0.0;
   unsigned int FLOW_MILLILITRES                         = 0;
-  uint32_t TOTAL_MILLILITRES                            = 0;
-  uint8_t FLOW_SENSOR_STATE                             = HIGH;
+  volatile uint32_t TOTAL_MILLILITRES                   = 0;
+  volatile uint8_t FLOW_SENSOR_STATE                    = HIGH;
 #endif
 
 #ifndef DISPLAY_INFO
