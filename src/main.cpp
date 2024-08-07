@@ -884,7 +884,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
     wateringStatus.flow = TOTAL_MILLILITRES;
     wateringStatus.pulses = FLOW_METER_PULSE_COUNT;
     interrupts(); // Enable interrupts
-    wateringStatus.duration = (millis() - START_INT_TIME) / 1000;
+    wateringStatus.duration = millis() - START_INT_TIME;
     wateringStatus.status = 4;
     // wateringStatus.message = String("plant: " + String(valve) + " pulses: " + String(FLOW_METER_PULSE_COUNT) + " milliliters: " + String(TOTAL_MILLILITRES) + " duration: " + String((millis() - START_INT_TIME) / 1000));
     setWateringStatus(&wateringStatus);
@@ -907,7 +907,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   mcp.digitalWrite(valve, HIGH);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   wateringStatus.status = 5;
-  wateringStatus.duration = (END_INT_TIME - START_INT_TIME) / 1000;
+  wateringStatus.duration = END_INT_TIME - START_INT_TIME;
   setWateringStatus(&wateringStatus);
 }
 
@@ -997,7 +997,7 @@ void serialPortHandler(void *pvParameters) {
         }
         serialLog(String("Started watering plants!"));
       } else if (command.equals("watering-status")) {
-        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow) + " duration: " + String(wateringStatus.duration)));
+        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow) + " duration: " + String(wateringStatus.duration / 1000)));
         if (wateringStatus.status == 128) {
           memset(&wateringStatus, 0, sizeof(WateringStatus));
           setWateringStatus(&wateringStatus);
