@@ -919,7 +919,7 @@ void waterPlants() {
   for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
     if (plant.status == 1) {
-      waterPlant(plant.id, /* calculateWateringDuration(plant.size) */ 60, (((plant.size * 1000) / 10 ) / 4));
+      waterPlant(plant.id, calculateWateringDuration(plant.size), (((plant.size * 1000) / 10 ) / 4));
     }
   }
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
@@ -970,12 +970,13 @@ void serialPortHandler(void *pvParameters) {
           Serial.println("Failed to set RTC.");
         }
       } else if (command.startsWith("set-plants:")) {
-        String jsonString = command.substring(8);
+        String jsonString = command.substring(11);
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, jsonString);
         if (error) {
           serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
         }
+        savePlants(doc, settings.plant);
         serialLog(getPlants(settings));
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
