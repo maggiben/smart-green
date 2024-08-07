@@ -124,7 +124,7 @@ uint32_t calculateWateringDuration(uint8_t potSize) {
 uint32_t getTotalWateringTime(Settings settings) {
   uint32_t result = 0;
   for (int i = 0; i < SETTINGS_MAX_PLANTS; i++) {
-    result += calculateWateringDuration(settings.plant[i].size);
+    result += settings.plant[i].status ? calculateWateringDuration(settings.plant[i].size) : 0;
   }
   return result;
 }

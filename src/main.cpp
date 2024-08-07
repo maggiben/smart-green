@@ -103,31 +103,31 @@ void setup() {
 
   printI2cDevices();
 
-  if(!initSDCard()) {
-    TRACE("SD not working\n");
-    beep(4, 150);
-  }
+  // if(!initSDCard()) {
+  //   TRACE("SD not working\n");
+  //   beep(4, 150);
+  // }
 
-  JsonDocument config = readConfig();
+  // JsonDocument config = readConfig();
 
-  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
-    // Config is newer
-    uint32_t updatedOn = config["updatedOn"];
-    TRACE("rtc update: %u\n", rtc.now().unixtime());
-    TRACE("new update: %u\n", updatedOn);
-    TRACE("old update: %u\n", settings.updatedOn);
-    if(settings.updatedOn < updatedOn) {
-      TRACE("Flashing new config!\n");
-      savePlants(config, settings.plant);
-      saveAlarms(config, settings.alarm);
-      settings.updatedOn = updatedOn;
-      EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
-      EEPROM.commit();
-      beep(4, 50);
-    }
-  } else {
-    TRACE("updatedOn is Null!\n");
-  }
+  // if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+  //   // Config is newer
+  //   uint32_t updatedOn = config["updatedOn"];
+  //   TRACE("rtc update: %u\n", rtc.now().unixtime());
+  //   TRACE("new update: %u\n", updatedOn);
+  //   TRACE("old update: %u\n", settings.updatedOn);
+  //   if(settings.updatedOn < updatedOn) {
+  //     TRACE("Flashing new config!\n");
+  //     savePlants(config, settings.plant);
+  //     saveAlarms(config, settings.alarm);
+  //     settings.updatedOn = updatedOn;
+  //     EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+  //     EEPROM.commit();
+  //     beep(4, 50);
+  //   }
+  // } else {
+  //   TRACE("updatedOn is Null!\n");
+  // }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -821,6 +821,7 @@ void handleWebServerTask(void * parameter) {
 }
 
 void pumpWater(void *parameter) {
+  TRACE("pumpWater thread started\n");
   waterPlants();
   while(getActiveAlarmId(settings, rtc.now()) > -1) {
     displayTime();
@@ -909,6 +910,7 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   wateringStatus.status = 5;
   wateringStatus.duration = END_INT_TIME - START_INT_TIME;
   setWateringStatus(&wateringStatus);
+  settings.taskLog.flow[valve] += wateringStatus.flow;
 }
 
 void waterPlants() {
@@ -919,11 +921,11 @@ void waterPlants() {
   
   int activeAlarmId = getActiveAlarmId(settings, rtc.now());
   settings.taskLog.lastExecutionId = activeAlarmId;
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector   
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
   for(uint8_t plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
     if (plant.status == 1) {
-      waterPlant(plantIndex, /* calculateWateringDuration(plant.size) */ 60, (((plant.size * 1000) / 10 ) / 4));
+      waterPlant(plantIndex, calculateWateringDuration(plant.size), (((plant.size * 1000) / 10 ) / 4));
     }
   }
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
@@ -982,7 +984,20 @@ void serialPortHandler(void *pvParameters) {
           serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
         }
         savePlants(doc, settings.plant);
+        EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+        EEPROM.commit();
         serialLog(getPlants(settings));
+      } else if (command.startsWith("set-alarms:")) {
+        String jsonString = command.substring(11);
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, jsonString);
+        if (error) {
+          serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
+        }
+        saveAlarms(doc, settings.alarm);
+        EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+        EEPROM.commit();
+        serialLog(getAlarms(settings));
       } else if (command.equals("water")) {
         serialLog(String("Start watering plants!"));
         if(xTaskCreate(
@@ -1002,10 +1017,7 @@ void serialPortHandler(void *pvParameters) {
           memset(&wateringStatus, 0, sizeof(WateringStatus));
           setWateringStatus(&wateringStatus);
         }
-      } else if (command.equals("plant")) {
-        settings.plant[0].size = 20;
-        serialLog("duration: " + String(calculateWateringDuration(settings.plant[0].size)) + " total: " + String( (((settings.plant[0].size * 1000) / 10 ) / 4)) + " calibration: " + String(FLOW_CALIBRATION_FACTOR));
-      }  else if (command.equals("read-task")) {
+      } else if (command.equals("read-task")) {
         String flow = "flow: [ ";
         for(uint8_t i = 0; i < SETTINGS_MAX_PLANTS; i++) {
           flow += String(settings.taskLog.flow[i]);
@@ -1036,24 +1048,25 @@ void serialPortHandler(void *pvParameters) {
       } else if (command.equals("trigger-alarm")) {
         DateTime now = rtc.now();
         
-        DateTime alarmTime_start = now + TimeSpan(0, 0, 1, 0); // Adding 2 minutes (120 seconds)
-        DateTime alarmTime_end = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_start = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_end = now + TimeSpan(0, 0, 3, 0); // Adding 2 minutes (120 seconds)
 
         for (uint8_t i = 0; i < 1; i++) {
-          settings.alarm[i][0].id = 33;
+          settings.alarm[i][0].id = 0;
           settings.alarm[i][0].weekday = 1 << alarmTime_start.dayOfTheWeek();
           settings.alarm[i][0].hour = alarmTime_start.hour();
           settings.alarm[i][0].minute = alarmTime_start.minute();
           settings.alarm[i][0].status = 1;
 
-          settings.alarm[i][0].id = 33;
+          settings.alarm[i][0].id = 0;
           settings.alarm[i][1].weekday = 1 << alarmTime_end.dayOfTheWeek();
           settings.alarm[i][1].hour = alarmTime_end.hour();
           settings.alarm[i][1].minute = alarmTime_end.minute();
           settings.alarm[i][1].status = 1;
 
-          alarmTime_start = now + TimeSpan(0, 0, i + 3, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
-          alarmTime_end = now + TimeSpan(0, 0, i + 4, getTotalWateringTime(settings)); // Adding 2 minutes (120 seconds)
+          uint32_t totalWateringTime = getTotalWateringTime(settings) / 60;
+          alarmTime_start = now + TimeSpan(0, 0, i + 10 + totalWateringTime, 0); // Adding 2 minutes (120 seconds)
+          alarmTime_end = now + TimeSpan(0, 0, i + 11 + totalWateringTime, 0); // Adding 2 minutes (120 seconds)
         }
 
         serialLog(String("Alarm set to 1 minute"));
