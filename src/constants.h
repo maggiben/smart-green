@@ -45,7 +45,6 @@
 #define I2C_MCP_PINCOUNT            16
 #define EEPROM_ADDRESS              0x57
 #define EEPROM_SIZE                 4096
-#define EEPROM_SETTINGS_ADDRESS     0
 // TRACE output simplified, can be deactivated here
 #define TRACE(...)                  Serial.printf(__VA_ARGS__)
 #define PRINT(...)                  Serial.print(__VA_ARGS__)
@@ -56,7 +55,9 @@
 #define PUMP2_PIN                   13
 #define FLOW_METER_PIN              33
 #define FLOW_METER_INTERRUPT        06
-#define FLOW_CALIBRATION_FACTOR     220
+#define FLOW_CALIBRATION_FACTOR     410     // Flow calibration factor   500=417.33ml 400=619ml 410=558ml 420=533.67ml 430=525.5ml   180=677~644 190=598~644~657 192=636~626 193=602~568~598~571~573 195=504~516 198=563~546~536 197=548~568~488~496~503 196=642~610
+#define WATER_PUMP_ML_PER_MINUTE    575     // Water pump flow in milliliter per minute  
+#define WATERING_STATUS_COMPLTE     128
 #define USE_DISPLAY                 true
 #define USE_RTC                     true
 #define USE_EEPROM                  true

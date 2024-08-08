@@ -50,6 +50,8 @@
 #include <ArduinoOTA.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include "soc/soc.h"            // For WRITE_PERI_REG
+#include "soc/rtc_cntl_reg.h"   // For RTC_CNTL_BROWN_OUT_REG
 #include "constants.h"
 #include "settings.h"
 
@@ -66,13 +68,15 @@ Settings settings = {
   // Assuming reboot on wifi failed is false
   SETTINGS_REBOOT_ON_WIFIFAIL,
   // Flow calibration value
-  FLOW_CALIBRATION_FACTOR,
+  0, // FLOW_CALIBRATION_FACTOR
   // Initializing alarms all to 0 (disabled)
   {{{0}}},
   // Max Plants
   SETTINGS_MAX_PLANTS,
   // Plant settings
   {{0}},
+  // TaskLog
+  {0},
   // Attemp to use Graphical Display
   USE_DISPLAY,
   USE_RTC,
@@ -92,6 +96,19 @@ Adafruit_MCP23X17 mcp; // Address 0x20
 // Need a WebServer for http access on port 80.
 WebServer server(80);
 
+// Watering process status
+struct WateringStatus {
+  uint8_t id;
+  uint8_t plant;
+  volatile uint32_t flow;
+  volatile uint32_t pulses;
+  uint32_t duration;
+  uint8_t status;
+  String message;
+};
+QueueHandle_t wateringStatusQueue;
+static const uint8_t wateringStatusQueueLength = 10;
+
 // Need a WebServer for http access on port 80.
 #ifndef server
   #define SERVER_RESPONSE_OK(...)  server.send(200, "application/jsont; charset=utf-8", __VA_ARGS__)
@@ -102,6 +119,7 @@ WebServer server(80);
 
 TaskHandle_t webServerTaskHandle;
 TaskHandle_t otaTaskHandle;
+TaskHandle_t serialTaskHandle;
 // Use only core
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0;
@@ -122,14 +140,16 @@ BaseType_t result = pdFALSE;
 #endif
 
 #ifndef ENABLE_FLOW
+  #define ENABLE_FLOW
   volatile byte FLOW_METER_PULSE_COUNT                  = 0;
   volatile unsigned long FLOW_METER_TOTAL_PULSE_COUNT   = 0;
-  unsigned long OLD_INT_TIME                            = 0;
+  volatile unsigned long OLD_INT_TIME                   = 0;
   unsigned long START_INT_TIME                          = 0;
-  float FLOW_RATE                                       = 0.0;
+  unsigned long END_INT_TIME                            = 0;
+  volatile float FLOW_RATE                              = 0.0;
   unsigned int FLOW_MILLILITRES                         = 0;
-  unsigned long TOTAL_MILLILITRES                       = 0;
-  uint8_t FLOW_SENSOR_STATE                             = HIGH;
+  volatile uint32_t TOTAL_MILLILITRES                   = 0;
+  volatile uint8_t FLOW_SENSOR_STATE                    = HIGH;
 #endif
 
 #ifndef DISPLAY_INFO
@@ -137,23 +157,27 @@ BaseType_t result = pdFALSE;
   byte DISPLAY_INFO_DATA = 0;
 #endif
 
-#ifndef ONLINE
-  #define ONLINE
+// #ifndef WIFI_ENABLED
+//   #define WIFI_ENABLED
+// #endif
+
+// #ifndef ENABLE_OTA
+//   #define ENABLE_OTA
+// #endif
+
+// #ifndef ENABLE_HTTP
+//   #define ENABLE_HTTP
+// #endif
+
+// #ifndef ENABLE_LOGGING
+//   #define ENABLE_LOGGING
+// #endif
+
+#ifndef ENABLE_SERIAL_COMMANDS
+  #define ENABLE_SERIAL_COMMANDS
 #endif
 
-#ifndef ENABLE_OTA
-  #define ENABLE_OTA
-#endif
-
-#ifndef ENABLE_HTTP
-  #define ENABLE_HTTP
-#endif
-
-#ifndef ENABLE_LOGGING
-  #define ENABLE_LOGGING
-#endif
-
-static SemaphoreHandle_t i2c_mutex;
+SemaphoreHandle_t i2cMutex;
 
 /**
  * Hardware Setup
@@ -197,13 +221,17 @@ void printLocalTime();
 void printRtcTime();
 void displayFlow();
 void displayTime();
+void serialLog(String message);
+void setWateringStatus(WateringStatus *wateringStatus);
 
 /**
  * IO
  */
 void waterPlants();
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres);
-
+void serialPortHandler(void *pvParameters);
+void stopWatering();
+uint32_t calculateWateringDuration(uint8_t potSize);
 /**
  * Threads
  */

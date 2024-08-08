@@ -36,12 +36,12 @@
 #include "settings.h"
 
 void saveSettings(Settings* settings) {
-  EEPROM.put(SETTINGS_ADDRESS, settings);
+  EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
   EEPROM.commit();
 }
 
 void readSettings(Settings* settings) {
-  EEPROM.get(SETTINGS_ADDRESS, settings);
+  EEPROM.get(EEPROM_SETTINGS_ADDRESS, settings);
 }
 
 void printI2cDevices(byte* devices) {
@@ -93,6 +93,7 @@ String getAlarms(Settings settings) {
     for (int j = 0; j < SETTINGS_ALARM_STATES; j++) {
       result += "{";
       
+        result += "  \"id\": " + String(settings.alarm[i][j].id) + ",\n";
         result += "  \"weekday\": " + String(settings.alarm[i][j].weekday) + ",\n";
         result += "  \"hour\": " + String(settings.alarm[i][j].hour) + ",\n";
         result += "  \"minute\": " + String(settings.alarm[i][j].minute) + ",\n";
@@ -115,6 +116,19 @@ String getAlarms(Settings settings) {
 }
 
 
+uint32_t calculateWateringDuration(uint8_t potSize) {
+  uint32_t targetMl = (((potSize * 1000) / 10 ) / 4); // one cuarter of 10% the size of the pot 
+  return targetMl / (WATER_PUMP_ML_PER_MINUTE / 60);
+}
+
+uint32_t getTotalWateringTime(Settings settings) {
+  uint32_t result = 0;
+  for (int i = 0; i < SETTINGS_MAX_PLANTS; i++) {
+    result += settings.plant[i].status ? calculateWateringDuration(settings.plant[i].size) : 0;
+  }
+  return result;
+}
+
 String getPlants(Settings settings) {
   String result = "[";
 
@@ -133,8 +147,6 @@ String getPlants(Settings settings) {
 }
 
 bool initSDCard() {
-  // pinMode(SS, OUTPUT);
-  // digitalWrite(SS, HIGH); // Set SS pin high initially
   if(!SD.begin(SS)) {
     TRACE("Card Mount Failed\n");
     return false;
@@ -322,6 +334,7 @@ int getActiveAlarmId(Settings settings, DateTime now) {
     // Check if the alarm is active (alarm[alarmNumber][0] == 1)
     if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
       // Extract alarm time components
+      uint8_t alarmId = settings.alarm[i][0].id;
       uint8_t alarmWeekday = settings.alarm[i][0].weekday;
       uint8_t startAlarmHour = settings.alarm[i][0].hour;
       uint8_t startAlarmMinute = settings.alarm[i][0].minute;
@@ -337,7 +350,7 @@ int getActiveAlarmId(Settings settings, DateTime now) {
           if(now.minute() >= startAlarmMinute && now.minute() < endAlarmMinute) { 
             // Alarm is active
             if (status == 1) {
-              return i;
+              return alarmId;
               break;
             }
           }
@@ -351,6 +364,48 @@ int getActiveAlarmId(Settings settings, DateTime now) {
 // Helper function to calculate seconds from hours, minutes, and seconds
 uint32_t toSeconds(uint8_t hours, uint8_t minutes, uint8_t seconds) {
   return hours * 3600 + minutes * 60 + seconds;
+}
+
+int getNextAlarmId(Settings settings, DateTime now) {
+  uint32_t minTimeToNextAlarm = UINT_MAX; // Initialize with maximum possible value
+  int nextAlarmId = -1; // Initialize with -1 to indicate no alarm found
+  uint32_t currentTimeInSeconds = toSeconds(now.hour(), now.minute(), now.second());
+  uint8_t currentDayOfWeek = now.dayOfTheWeek();
+
+  for (uint8_t i = 0; i < SETTINGS_MAX_ALARMS; i++) {
+    if (settings.alarm[i][0].status == 1 && settings.alarm[i][1].status == 1) {
+      uint8_t alarmWeekdayMask = settings.alarm[i][0].weekday;
+      uint8_t startAlarmHour = settings.alarm[i][0].hour;
+      uint8_t startAlarmMinute = settings.alarm[i][0].minute;
+      uint8_t startAlarmSecond = 0; // Assuming seconds are not stored, default to 0
+
+      uint32_t alarmTimeInSeconds = toSeconds(startAlarmHour, startAlarmMinute, startAlarmSecond);
+
+      for (uint8_t dayOffset = 0; dayOffset < 7; dayOffset++) {
+        uint8_t dayToCheck = (currentDayOfWeek + dayOffset) % 7;
+        uint8_t dayMask = 1 << dayToCheck;
+
+        if ((alarmWeekdayMask & dayMask) != 0) {
+          uint32_t timeToNextAlarm;
+
+          if (dayOffset == 0 && alarmTimeInSeconds > currentTimeInSeconds) {
+            // Same day, future time
+            timeToNextAlarm = alarmTimeInSeconds - currentTimeInSeconds;
+          } else {
+            // Future days
+            timeToNextAlarm = (86400 * dayOffset) + alarmTimeInSeconds - currentTimeInSeconds;
+          }
+
+          if (timeToNextAlarm < minTimeToNextAlarm) {
+            minTimeToNextAlarm = timeToNextAlarm;
+            nextAlarmId = settings.alarm[i][0].id; // Update the next alarm ID
+          }
+        }
+      }
+    }
+  }
+
+  return nextAlarmId;
 }
 
 uint32_t getNextAlarmTime(Settings settings, DateTime now) {
@@ -400,7 +455,6 @@ bool isAlarmOn(Settings settings, DateTime now) {
   return false;
 }
 
-
 bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALARM_STATES]) {
   JsonArray alarmArray = json["alarm"].as<JsonArray>();
   int numAlarms = alarmArray.size();
@@ -408,6 +462,9 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
     TRACE("Exceeded maximum number of alarms\n");
     return false;
   }
+
+  // Clean all alarms
+  memset(alarm, 0, sizeof(Alarm) * SETTINGS_MAX_ALARMS * SETTINGS_ALARM_STATES);
 
   for (int alarmIndex = 0; alarmIndex < numAlarms; alarmIndex++) {
     JsonArray alarmData = alarmArray[alarmIndex].as<JsonArray>();
@@ -425,6 +482,7 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
         return false;
       }
 
+      uint8_t id = alarmSetting["id"];
       uint8_t weekday = alarmSetting["weekday"];
       uint8_t hour = alarmSetting["hour"];
       uint8_t minute = alarmSetting["minute"];
@@ -437,6 +495,7 @@ bool saveAlarms(JsonDocument json, Alarm alarm[SETTINGS_MAX_ALARMS][SETTINGS_ALA
       }
 
       // Store the alarm settings
+      alarm[alarmIndex][i].id = id;
       alarm[alarmIndex][i].weekday = weekday;
       alarm[alarmIndex][i].hour = hour;
       alarm[alarmIndex][i].minute = minute;
@@ -454,6 +513,9 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
     return false;
   }
 
+  // Clean all alarms
+  memset(plants, 0, sizeof(Plant) * SETTINGS_MAX_PLANTS);
+
   for (int plantIndex = 0; plantIndex < numPlant; plantIndex++) {
     JsonObject plantData = plantArray[plantIndex].as<JsonObject>();
 
@@ -470,7 +532,7 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
 
     // Validate hour, minute, and active values
     if (id < 0 || size < 0) {
-      TRACE("Invalid alarm settings\n");
+      TRACE("Invalid plant settings\n");
       return false;
     }
 
@@ -483,7 +545,7 @@ bool savePlants(JsonDocument json, Plant plants[SETTINGS_MAX_PLANTS]) {
 }
 
 void beep(uint8_t times, unsigned long delay) {
-  TRACE("beeping times: %d\n", times);
+  TRACE("beeping times: %d delay: %d\n", times, delay);
   pinMode(BUZZER_PIN, OUTPUT);
   for(uint8_t i = 0; i < times; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
@@ -690,4 +752,26 @@ String settingsToJson(const Settings& settings) {
   serializeJson(doc, jsonString);
 
   return jsonString;
+}
+
+bool setRTCFromISODate(String isoDate, RTC_DS3231 rtc) {
+  // Expected format: YYYY-MM-DDTHH:MM:SS use date +"%Y-%m-%dT%H:%M:%S"
+  if (isoDate.length() != 19) {
+    return false;
+  }
+
+  int year = isoDate.substring(0, 4).toInt();
+  int month = isoDate.substring(5, 7).toInt();
+  int day = isoDate.substring(8, 10).toInt();
+  int hour = isoDate.substring(11, 13).toInt();
+  int minute = isoDate.substring(14, 16).toInt();
+  int second = isoDate.substring(17, 19).toInt();
+
+  if (year < 2000 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+      return false;
+  }
+
+  rtc.adjust(DateTime(year, month, day, hour, minute, second));
+  return true;
 }

@@ -47,9 +47,9 @@ void setup() {
   }
 
   Wire.begin();
-  i2c_mutex = xSemaphoreCreateMutex();
-  if (i2c_mutex == NULL) {
-    TRACE("Error insufficient heap memory to create i2c_mutex mutex\n");
+  i2cMutex = xSemaphoreCreateMutex();
+  if (i2cMutex == NULL) {
+    TRACE("Error insufficient heap memory to create i2cMutex mutex\n");
   }
 
   // Check if EEPROM is ready
@@ -103,31 +103,31 @@ void setup() {
 
   printI2cDevices();
 
-  if(!initSDCard()) {
-    TRACE("SD not working\n");
-    beep(4, 150);
-  }
+  // if(!initSDCard()) {
+  //   TRACE("SD not working\n");
+  //   beep(4, 150);
+  // }
 
-  JsonDocument config = readConfig();
+  // JsonDocument config = readConfig();
 
-  if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
-    // Config is newer
-    uint32_t updatedOn = config["updatedOn"];
-    TRACE("rtc update: %u\n", rtc.now().unixtime());
-    TRACE("new update: %u\n", updatedOn);
-    TRACE("old update: %u\n", settings.updatedOn);
-    if(settings.updatedOn < updatedOn) {
-      TRACE("Flashing new config!\n");
-      beep(4, 50);
-      savePlants(config, settings.plant);
-      saveAlarms(config, settings.alarm);
-      settings.updatedOn = updatedOn;
-      EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
-      EEPROM.commit();
-    }
-  } else {
-    TRACE("updatedOn is Null!\n");
-  }
+  // if (!config["updatedOn"].isNull()) { // Math.floor(Date.now() / 1000) & 0xFFFFFFFF
+  //   // Config is newer
+  //   uint32_t updatedOn = config["updatedOn"];
+  //   TRACE("rtc update: %u\n", rtc.now().unixtime());
+  //   TRACE("new update: %u\n", updatedOn);
+  //   TRACE("old update: %u\n", settings.updatedOn);
+  //   if(settings.updatedOn < updatedOn) {
+  //     TRACE("Flashing new config!\n");
+  //     savePlants(config, settings.plant);
+  //     saveAlarms(config, settings.alarm);
+  //     settings.updatedOn = updatedOn;
+  //     EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+  //     EEPROM.commit();
+  //     beep(4, 50);
+  //   }
+  // } else {
+  //   TRACE("updatedOn is Null!\n");
+  // }
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_ADDRESSS)) {; // Address 0x3C for 128x32
     TRACE("Display not working\n");
@@ -141,13 +141,29 @@ void setup() {
 
   TRACE("settings.hostname %s\n", settings.hostname);
 
-#if defined(ONLINE)
+  // Create a queue capable of holding 10 strings of up to 100 characters each
+  wateringStatusQueue = xQueueCreate(wateringStatusQueueLength, sizeof(WateringStatus));
+    // Serial commander task
+#if defined(ENABLE_SERIAL_COMMANDS)
+  xTaskCreatePinnedToCore(
+    serialPortHandler,     // Task function
+    "SerialPort",          // Name of the task (for debugging)
+    89000,                 // Stack size (in words, not bytes)
+    NULL,                  // Task input parameter
+    PRIORITY_HIGH,         // Priority of the task
+    &serialTaskHandle,     // Task handle
+    1                      // Core where the task should run
+  );
+#endif
+
+#if defined(WIFI_ENABLED)
   String ssid = config["network"]["ssid"].isNull() ? WIFI_SSID : config["network"]["ssid"].as<String>();
   String password = config["network"]["password"].isNull() ? WIFI_PASSWORD : config["network"]["password"].as<String>();
+  bool enabled = config["network"]["enabled"].isNull() ? WIFI_ENABLED : config["network"]["enabled"].as<bool>();
   TRACE("ssid: %s\n", ssid.c_str());
   TRACE("password: %s\n", password.c_str());
   TRACE("config: %s\n", config.as<String>().c_str());
-  if (config["network"]["enabled"].as<bool>() && connectToWiFi(ssid.c_str(), password.c_str())) {
+  if (enabled && connectToWiFi(ssid.c_str(), password.c_str())) {
     IPAddress ip = WiFi.localIP();
     TRACE("\n");
     TRACE("Wifi Connected: IP: %s - Hostname: %s\n", WiFi.localIP().toString().c_str(), WiFi.getHostname());
@@ -260,6 +276,46 @@ void calcFlow() {
     // Enable the interrupt again now that we've finished sending output
     attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
   }
+  // yield 
+  vTaskDelay(10 / portTICK_PERIOD_MS);
+}
+
+void calcFlowGpt() {
+  // Note the time this processing pass was executed.
+  unsigned long startTime = millis();
+  unsigned long elapsedTime = 0;
+
+  while (elapsedTime < 1000) {
+    // Disable the interrupt while calculating flow rate and sending the value to the host
+    detachInterrupt(FLOW_METER_INTERRUPT);
+
+    // Calculate elapsed time
+    elapsedTime = millis() - startTime;
+
+    // Calculate flow rate considering the elapsed time
+    FLOW_RATE = ((1000.0 / elapsedTime) * FLOW_METER_PULSE_COUNT) / FLOW_CALIBRATION_FACTOR;
+
+    // Calculate millilitres passed in this interval
+    FLOW_MILLILITRES = FLOW_METER_PULSE_COUNT == 0 ? 0 : (FLOW_RATE / 60) * 1000;
+
+    // Add the millilitres passed in this interval to the cumulative total
+    TOTAL_MILLILITRES += FLOW_MILLILITRES;
+
+    // Display flow
+    displayFlow();
+
+    // Reset the pulse counter so we can start incrementing again
+    FLOW_METER_PULSE_COUNT = 0;
+
+    // Enable the interrupt again now that we've finished sending output
+    attachInterrupt(FLOW_METER_INTERRUPT, pulseCounter, FALLING);
+
+    // Yield and delay
+    vTaskDelay(1 / portTICK_PERIOD_MS);
+
+    // Recalculate elapsed time for the next loop iteration
+    elapsedTime = millis() - startTime;
+  }
 }
 
 void displayFlow() {
@@ -285,6 +341,7 @@ void setTimezone(String timezone) {
 
 void initTime(String timezone) {
   tm timeinfo;
+  // Initialize NTP time sync
   TRACE("Setting up time\n");
   configTime(0, 0, "pool.ntp.org");    // First connect to NTP server, with 0 TZ offset
   // Now we can set the real timezone
@@ -303,6 +360,11 @@ void initTime(String timezone) {
   }
 }
 
+/**
+ * Get the offset between the RTC and the Unix time.
+ *
+ * @return the offset in seconds
+ */
 long int getRtcOffset() {
   tm timeinfo;
   getLocalTime(&timeinfo);
@@ -400,7 +462,7 @@ void syncRTC() {
   DateTime dateTime = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   rtc.adjust(dateTime);
   settings.lastDateTimeSync = rtc.now().unixtime();
-  settings.updatedOn = rtc.now().unixtime();
+  // settings.updatedOn = rtc.now().unixtime();
   EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
   EEPROM.commit();
   TRACE("RTC synced with NTP time\n");
@@ -691,17 +753,17 @@ void loop() {
       xTaskCreate(
         pumpWater,            // Task function
         "AlarmTask",          // Task name
-        8192,                 // Stack size (bytes)
+        46000,                // Stack size (bytes)
         NULL,                 // Task parameter
-        tskIDLE_PRIORITY + 4, // Task priority (very high)
+        PRIORITY_HIGH,        // Task priority (high)
         &alarmTask            // Task handle
       );
     } else if (settings.hasDisplay && activateAlarm <= -1 || !IS_ALARM_ON) {
-      if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) { 
+      if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE) { 
         displayTime();
         vTaskDelay(500 / portTICK_PERIOD_MS);
       }
-      xSemaphoreGive(i2c_mutex);
+      xSemaphoreGive(i2cMutex);
     }
   }
   vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -750,15 +812,16 @@ void handleWebServerTask(void * parameter) {
   TRACE("open <http://%s> or <http://%s>\n", WiFi.getHostname(), WiFi.localIP().toString().c_str());
   
   for(;;) {
-    if (xSemaphoreTake(i2c_mutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY) == pdTRUE) {
       server.handleClient();
     }
-    xSemaphoreGive(i2c_mutex);
+    xSemaphoreGive(i2cMutex);
     vTaskDelay(150 / portTICK_PERIOD_MS); // Give some time for the other tasks
   }
 }
 
 void pumpWater(void *parameter) {
+  TRACE("pumpWater thread started\n");
   waterPlants();
   while(getActiveAlarmId(settings, rtc.now()) > -1) {
     displayTime();
@@ -768,22 +831,49 @@ void pumpWater(void *parameter) {
   vTaskDelete(NULL);
 }
 
+void setWateringStatus(WateringStatus *status) {
+  // WateringStatus wateringStatus;
+  // wateringStatus.status = status->status;
+  // Try to add item to queue for 10 ticks, fail if queue is full
+  if (xQueueSend(wateringStatusQueue, status, portMAX_DELAY) != pdPASS) {
+    TRACE("wateringStatus queue full\n");
+  }
+}
+
+void stopWatering() {
+  // TOTAL_MILLILITRES = 0;
+  FLOW_METER_PULSE_COUNT = 0;
+  detachInterrupt(FLOW_METER_INTERRUPT);
+  // Turn Pump Off
+  mcp.writeGPIOAB(0b1111111111111111);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  setWateringStatus(0);
+}
+
 /*
  * unsigned int duration in seconds
  */
 void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres) {
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
+  wateringStatus.plant = valve;
   // Open Valve
   mcp.pinMode(valve, OUTPUT);
   mcp.digitalWrite(valve, LOW);
   // Wait time to avoid current surge
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  wateringStatus.status = 2;
+  setWateringStatus(&wateringStatus);
   // Start the pump
   mcp.pinMode(PUMP1_PIN, OUTPUT);
   mcp.digitalWrite(PUMP1_PIN, LOW);
 
   pinMode(FLOW_METER_PIN, INPUT);
   pinMode(FLOW_METER_PIN, INPUT_PULLUP);
-  /*The Hall-effect sensor is connected to pin 2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
+  wateringStatus.status = 3;
+  setWateringStatus(&wateringStatus);
+  /*The Hall-effect sensor is connected to pin 
+  2 which uses interrupt 0. Configured to trigger on a FALLING state change (transition from HIGH
   (state to LOW state)*/
   TOTAL_MILLILITRES = 0;
   START_INT_TIME = millis();
@@ -791,10 +881,20 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   FLOW_METER_PULSE_COUNT = 0;
   for(uint8_t i = 0; i < duration; i++) {
     calcFlow();
-    if (TOTAL_MILLILITRES > millilitres) {
-      break;
-    }
+    noInterrupts(); // disable interrups
+    wateringStatus.flow = TOTAL_MILLILITRES;
+    wateringStatus.pulses = FLOW_METER_PULSE_COUNT;
+    interrupts(); // Enable interrupts
+    wateringStatus.duration = millis() - START_INT_TIME;
+    wateringStatus.status = 4;
+    // wateringStatus.message = String("plant: " + String(valve) + " pulses: " + String(FLOW_METER_PULSE_COUNT) + " milliliters: " + String(TOTAL_MILLILITRES) + " duration: " + String((millis() - START_INT_TIME) / 1000));
+    setWateringStatus(&wateringStatus);
+    // TRACE("plant: %d pulses: %d milliliters: %d cpy: %d second: %d =>", valve, FLOW_METER_PULSE_COUNT, TOTAL_MILLILITRES, wateringStatus.flow, i);
+    // if (TOTAL_MILLILITRES > millilitres) {
+    //   break;
+    // }
   }
+  END_INT_TIME = millis();
 #if defined(ENABLE_LOGGING)
   saveLog(rtc.now(), "water", valve, TOTAL_MILLILITRES, duration);
 #endif
@@ -807,13 +907,195 @@ void waterPlant(uint8_t valve, unsigned int duration, unsigned long millilitres)
   // Turn Valve Off
   mcp.digitalWrite(valve, HIGH);
   vTaskDelay(1000 / portTICK_PERIOD_MS);
+  wateringStatus.status = 5;
+  wateringStatus.duration = END_INT_TIME - START_INT_TIME;
+  setWateringStatus(&wateringStatus);
+  settings.taskLog.flow[valve] += wateringStatus.flow;
 }
 
 void waterPlants() {
-  for(int plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
+  wateringStatus.status = 1;
+  setWateringStatus(&wateringStatus);
+  
+  int activeAlarmId = getActiveAlarmId(settings, rtc.now());
+  settings.taskLog.lastExecutionId = activeAlarmId;
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
+  for(uint8_t plantIndex = 0; plantIndex < SETTINGS_MAX_PLANTS; plantIndex++) {
     Plant plant = settings.plant[plantIndex];
     if (plant.status == 1) {
-      waterPlant(plant.id, 20, 250);
+      waterPlant(plantIndex, calculateWateringDuration(plant.size), (((plant.size * 1000) / 10 ) / 4));
     }
+  }
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1); //enable brownout
+  wateringStatus.status = WATERING_STATUS_COMPLTE;
+  setWateringStatus(&wateringStatus);
+  // Wait till alarm is off before saving
+  while(isAlarmOn(settings, rtc.now())) { vTaskDelay(1000 / portTICK_PERIOD_MS); }
+  int nextAlarmId = getNextAlarmId(settings, rtc.now());
+  settings.taskLog.nextExecutionId = nextAlarmId;
+  EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+  EEPROM.commit();
+}
+
+void serialLog(String message) {
+  DateTime now = rtc.now();
+  message.replace('\n', ' ');
+  TRACE("[%04d/%02d/%02d %02d:%02d:%02d] > %s\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second(), message.c_str());
+}
+
+// Function to handle serial communication in a FreeRTOS task
+void serialPortHandler(void *pvParameters) {
+  uint8_t timer = 0;
+  TaskHandle_t alarmTask = NULL;
+  uint8_t status;
+  Serial.flush();
+  struct WateringStatus wateringStatus;
+  memset(&wateringStatus, 0, sizeof(WateringStatus));
+  while (true) {
+    if (xQueueReceive(wateringStatusQueue, (void *)&wateringStatus, 0) == pdTRUE) {
+      if (status != wateringStatus.status) {
+        status = wateringStatus.status;
+      }
+    }
+
+    if (Serial.available() > 0) {
+      String command = Serial.readStringUntil('\n');
+      Serial.flush();
+      command.trim();
+      if (command.equals("ping")) {
+        serialLog(String("pong!"));
+      } else if (command.startsWith("beep")) {
+        beep(2, 150);
+        serialLog(String("beep!"));
+      } else if (command.startsWith("set-rtc:")) {
+        String isoDate = command.substring(8);
+        if (setRTCFromISODate(isoDate, rtc)) {
+          Serial.println("RTC set successfully.");
+        } else {
+          Serial.println("Failed to set RTC.");
+        }
+      } else if (command.startsWith("set-plants:")) {
+        String jsonString = command.substring(11);
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, jsonString);
+        if (error) {
+          serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
+        }
+        savePlants(doc, settings.plant);
+        EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+        EEPROM.commit();
+        serialLog(getPlants(settings));
+      } else if (command.startsWith("set-alarms:")) {
+        String jsonString = command.substring(11);
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, jsonString);
+        if (error) {
+          serialLog(String("deserializeJson() failed:" + String(error.c_str()) + " \n"));
+        }
+        saveAlarms(doc, settings.alarm);
+        EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+        EEPROM.commit();
+        serialLog(getAlarms(settings));
+      } else if (command.equals("water")) {
+        serialLog(String("Start watering plants!"));
+        if(xTaskCreate(
+          pumpWater,            // Task function
+          "AlarmTask",          // Task name
+          46000,                // Stack size (bytes)
+          NULL,                 // Task parameter
+          PRIORITY_HIGH,        // Task priority (very high)
+          &alarmTask            // Task handle
+        ) != pdPASS) {
+          serialLog(String("Task creation failed!"));
+        }
+        serialLog(String("Started watering plants!"));
+      } else if (command.equals("watering-status")) {
+        serialLog(String("plant: " + String(wateringStatus.plant) + " status: " + String(status) + " flow: " + String(wateringStatus.flow) + " duration: " + String(wateringStatus.duration / 1000)));
+        if (wateringStatus.status == 128) {
+          memset(&wateringStatus, 0, sizeof(WateringStatus));
+          setWateringStatus(&wateringStatus);
+        }
+      } else if (command.equals("read-task")) {
+        String flow = "flow: [ ";
+        for(uint8_t i = 0; i < SETTINGS_MAX_PLANTS; i++) {
+          flow += String(settings.taskLog.flow[i]);
+          if (i < SETTINGS_MAX_PLANTS - 1) {
+            flow += " ";
+          }
+        }
+        flow += " ]";
+        serialLog("lastExecutionId: " + String(settings.taskLog.lastExecutionId) + " nextExecutionId: " + String(settings.taskLog.nextExecutionId) + " " + flow);
+      } else if (command.equals("reset-task")) {
+        settings.taskLog = {0};
+        EEPROM.put(EEPROM_SETTINGS_ADDRESS, settings);
+        EEPROM.commit();
+        serialLog("Task reset");
+      } else if (command.equals("get-watering-time")) {
+        uint32_t totalWateringTime = getTotalWateringTime(settings);
+        serialLog("total_watering_time: " + String(totalWateringTime));
+      } else if (command.equals("time")) {
+        DateTime now = rtc.now();
+        Serial.printf("%04d/%02d/%02d %02d:%02d:%02d\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+      } else if (command.equals("alarm")) {
+        serialLog(getAlarms(settings));
+      } else if (command.equals("plants")) {
+        serialLog(getPlants(settings));
+      } else if (command.equals("restart")) {
+        serialLog(String("Restarting!"));
+        ESP.restart();
+      } else if (command.equals("trigger-alarm")) {
+        DateTime now = rtc.now();
+        
+        DateTime alarmTime_start = now + TimeSpan(0, 0, 2, 0); // Adding 2 minutes (120 seconds)
+        DateTime alarmTime_end = now + TimeSpan(0, 0, 3, 0); // Adding 2 minutes (120 seconds)
+
+        for (uint8_t i = 0; i < 1; i++) {
+          settings.alarm[i][0].id = 0;
+          settings.alarm[i][0].weekday = 1 << alarmTime_start.dayOfTheWeek();
+          settings.alarm[i][0].hour = alarmTime_start.hour();
+          settings.alarm[i][0].minute = alarmTime_start.minute();
+          settings.alarm[i][0].status = 1;
+
+          settings.alarm[i][0].id = 0;
+          settings.alarm[i][1].weekday = 1 << alarmTime_end.dayOfTheWeek();
+          settings.alarm[i][1].hour = alarmTime_end.hour();
+          settings.alarm[i][1].minute = alarmTime_end.minute();
+          settings.alarm[i][1].status = 1;
+
+          uint32_t totalWateringTime = getTotalWateringTime(settings) / 60;
+          alarmTime_start = now + TimeSpan(0, 0, i + 10 + totalWateringTime, 0); // Adding 2 minutes (120 seconds)
+          alarmTime_end = now + TimeSpan(0, 0, i + 11 + totalWateringTime, 0); // Adding 2 minutes (120 seconds)
+        }
+
+        serialLog(String("Alarm set to 1 minute"));
+      } else if (command.equals("logs")) {
+        initSDCard();
+        serialLog(String("Log count: " + String(getLogCount("/logs"))));
+      } else if (command.startsWith("next-alarm")) {
+        time_t futureTime;
+        DateTime now = rtc.now();
+        uint32_t minTimeToNextAlarm = getNextAlarmTime(settings, rtc.now());
+        
+        futureTime = now.unixtime() + minTimeToNextAlarm;
+        // Convert to Unix time
+        char buffer[28];
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localtime(&futureTime));
+        serialLog(String("nextAlarmSecs: " + String(minTimeToNextAlarm) + " nextAlarm: " + String(buffer)));
+      } else if (command.length() > 0) {
+        serialLog(String("Invalid command"));
+      } else {
+        serialLog(String("Unknown input"));
+      }
+    }
+    if (timer >= 100) {
+      // Runs once a second
+      timer = 0;
+    } else {
+      timer += 1;
+    }
+    Serial.flush();
+    vTaskDelay(10 / portTICK_PERIOD_MS);  // Small delay to yield task
   }
 }
