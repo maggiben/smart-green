@@ -509,8 +509,8 @@ void handleSystemInfo() {
   result += "  },\n";
   result += "  \"sdcard\": {\n";
   result += "    \"cardType\": " + String(SD.cardType()) + ",\n";
-  result += "    \"cardSize\": " + String(SD.cardSize() / (1024 * 1024)) + ",\n";
-  result += "    \"freeSize\": " + String(SD.cardSize() / (1024 * 1024) - (SD.usedBytes() / (1024 * 1024))) + ",\n";
+  result += "    \"cardSize\": " + String((uint32_t)SD.cardSize() / (1024 * 1024)) + ",\n";
+  result += "    \"freeSize\": " + String((uint32_t)SD.cardSize() / (1024 * 1024) - (uint32_t)(SD.usedBytes() / (1024 * 1024))) + ",\n";
   result += "    \"logCount\": " + String(getLogCount("/logs")) + "\n";
   result += "  },\n";
   JsonDocument config = readConfig();
